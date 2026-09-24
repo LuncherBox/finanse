@@ -155,7 +155,11 @@ function renderExpenses() {
 
 function renderSummary(summary) {
   renderCategorySummary(summary.categories || [], Number(summary.total) || 0);
-  renderSubcategorySummary(summary.subcategories || []);
+  renderCategorySubcategorySummary(
+    summary.categories || [],
+    summary.subcategories || [],
+    Number(summary.total) || 0
+  );
 }
 
 function renderCategorySummary(rows, total) {
@@ -180,26 +184,51 @@ function renderCategorySummary(rows, total) {
   }).join("");
 }
 
-function renderSubcategorySummary(rows) {
+function renderCategorySubcategorySummary(categories, subcategories, total) {
   const target = $("subcategorySummary");
-  if (!rows.length) {
-    target.innerHTML = '<div class="empty">Brak danych dla podkategorii.</div>';
+
+  if (!categories.length) {
+    target.innerHTML = '<div class="empty">Brak danych dla tego miesiąca.</div>';
     return;
   }
 
-  const total = rows.reduce((sum, item) => sum + Number(item.amount || 0), 0) || 1;
-  target.innerHTML = rows.map((item) => {
-    const pct = Math.round((Number(item.amount) / total) * 100);
+  const safeTotal = total || 1;
+
+  target.innerHTML = categories.map((category) => {
+    const categoryAmount = Number(category.amount || 0);
+    const categoryPct = Math.round((categoryAmount / safeTotal) * 100);
+    const rows = subcategories.filter(
+      (item) => item.category_name === category.category_name
+    );
+
     return `
-      <div class="summary-item summary-sub-item">
-        <div class="summary-top">
+      <div class="category-summary-group">
+        <div class="category-summary-head">
           <span>
-            <strong>${escapeHtml(item.subcategory_name)}</strong>
-            <small>${escapeHtml(item.category_name)}</small>
+            <strong>${escapeHtml(category.category_name)}</strong>
+            <small>${categoryPct}% wszystkich wydatków</small>
           </span>
-          <strong>${money(item.amount)} · ${pct}%</strong>
+          <strong>${money(categoryAmount)}</strong>
         </div>
-        <div class="bar-track"><div class="bar-fill" style="width:${pct}%"></div></div>
+
+        <div class="category-summary-subs">
+          ${rows.map((item) => {
+            const amount = Number(item.amount || 0);
+            const pctOfCategory = categoryAmount
+              ? Math.round((amount / categoryAmount) * 100)
+              : 0;
+
+            return `
+              <div class="subcategory-row">
+                <span>
+                  <strong>${escapeHtml(item.subcategory_name)}</strong>
+                  <small>${pctOfCategory}% kategorii</small>
+                </span>
+                <strong>${money(amount)}</strong>
+              </div>
+            `;
+          }).join("")}
+        </div>
       </div>
     `;
   }).join("");
