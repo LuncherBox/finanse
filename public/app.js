@@ -192,11 +192,8 @@ function renderCategorySubcategorySummary(categories, subcategories, total) {
     return;
   }
 
-  const safeTotal = total || 1;
-
   target.innerHTML = categories.map((category) => {
     const categoryAmount = Number(category.amount || 0);
-    const categoryPct = Math.round((categoryAmount / safeTotal) * 100);
     const rows = subcategories.filter(
       (item) => item.category_name === category.category_name
     );
@@ -204,11 +201,8 @@ function renderCategorySubcategorySummary(categories, subcategories, total) {
     return `
       <div class="category-summary-group">
         <div class="category-summary-head">
-          <span>
-            <strong>${escapeHtml(category.category_name)}</strong>
-            <small>${categoryPct}% wszystkich wydatków</small>
-          </span>
-          <strong>${money(categoryAmount)}</strong>
+          <strong class="category-summary-name">${escapeHtml(category.category_name)}</strong>
+          <strong class="category-summary-amount">${money(categoryAmount)}</strong>
         </div>
 
         <div class="category-summary-subs">
@@ -220,11 +214,11 @@ function renderCategorySubcategorySummary(categories, subcategories, total) {
 
             return `
               <div class="subcategory-row">
-                <span>
+                <span class="subcategory-info">
                   <strong>${escapeHtml(item.subcategory_name)}</strong>
-                  <small>${pctOfCategory}% kategorii</small>
+                  <small>${pctOfCategory}%</small>
                 </span>
-                <strong>${money(amount)}</strong>
+                <strong class="subcategory-amount">${money(amount)}</strong>
               </div>
             `;
           }).join("")}
