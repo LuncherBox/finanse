@@ -468,9 +468,4 @@ if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => navigator.serviceWorker.register("/sw.js").catch(() => {}));
 }
 
-(async function startLocked() {
-  try {
-    await fetch("/api/logout", { method: "POST" });
-  } catch {}
-  showLogin();
-})();
+checkAuth();
