@@ -132,16 +132,21 @@ function renderExpenses() {
     return;
   }
 
-  target.innerHTML = state.expenses.map((expense) => `
-    <button class="expense-row" type="button" data-expense-id="${expense.id}">
-      <span class="expense-main">
-        <strong>${escapeHtml(expense.category_name || "Bez kategorii")}</strong>
-        <span>${escapeHtml(expense.subcategory_name || expense.description || "")}</span>
-      </span>
-      <span class="expense-amount">${money(expense.amount)}</span>
-      <span class="expense-meta">${dateLabel(expense.expense_date)}${expense.description && expense.subcategory_name ? " · " + escapeHtml(expense.description) : ""}</span>
-    </button>
-  `).join("");
+  target.innerHTML = state.expenses.map((expense) => {
+    const secondary = expense.subcategory_name || expense.description || "";
+    return `
+      <button class="expense-row" type="button" data-expense-id="${expense.id}">
+        <span class="expense-main">
+          <strong>${escapeHtml(expense.category_name || "Bez kategorii")}</strong>
+          <span class="expense-sub">${escapeHtml(secondary)}</span>
+        </span>
+        <span class="expense-side">
+          <strong class="expense-amount">${money(expense.amount)}</strong>
+          <span class="expense-date">${dateLabel(expense.expense_date)}</span>
+        </span>
+      </button>
+    `;
+  }).join("");
 
   target.querySelectorAll("[data-expense-id]").forEach((button) => {
     button.addEventListener("click", () => openExpense(Number(button.dataset.expenseId)));
@@ -149,19 +154,49 @@ function renderExpenses() {
 }
 
 function renderSummary(summary) {
+  renderCategorySummary(summary.categories || [], Number(summary.total) || 0);
+  renderSubcategorySummary(summary.subcategories || []);
+}
+
+function renderCategorySummary(rows, total) {
   const target = $("summaryBars");
-  if (!summary.categories.length) {
+  if (!rows.length) {
     target.innerHTML = '<div class="empty">Brak danych dla tego miesiąca.</div>';
     return;
   }
 
-  const total = Number(summary.total) || 1;
-  target.innerHTML = summary.categories.map((item) => {
-    const pct = Math.round((Number(item.amount) / total) * 100);
+  const safeTotal = total || 1;
+  target.innerHTML = rows.map((item) => {
+    const pct = Math.round((Number(item.amount) / safeTotal) * 100);
     return `
       <div class="summary-item">
         <div class="summary-top">
           <strong>${escapeHtml(item.category_name)}</strong>
+          <strong>${money(item.amount)} · ${pct}%</strong>
+        </div>
+        <div class="bar-track"><div class="bar-fill" style="width:${pct}%"></div></div>
+      </div>
+    `;
+  }).join("");
+}
+
+function renderSubcategorySummary(rows) {
+  const target = $("subcategorySummary");
+  if (!rows.length) {
+    target.innerHTML = '<div class="empty">Brak danych dla podkategorii.</div>';
+    return;
+  }
+
+  const total = rows.reduce((sum, item) => sum + Number(item.amount || 0), 0) || 1;
+  target.innerHTML = rows.map((item) => {
+    const pct = Math.round((Number(item.amount) / total) * 100);
+    return `
+      <div class="summary-item summary-sub-item">
+        <div class="summary-top">
+          <span>
+            <strong>${escapeHtml(item.subcategory_name)}</strong>
+            <small>${escapeHtml(item.category_name)}</small>
+          </span>
           <strong>${money(item.amount)} · ${pct}%</strong>
         </div>
         <div class="bar-track"><div class="bar-fill" style="width:${pct}%"></div></div>
