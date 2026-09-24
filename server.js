@@ -377,7 +377,7 @@ app.delete("/api/expenses/:id", requireAuth, async (req, res) => {
 
 app.get("/api/summary", requireAuth, async (req, res) => {
   const month = String(req.query.month || "");
-  if (!/^\\d{4}-\\d{2}$/.test(month)) return sendError(res, 400, "Nieprawidłowy miesiąc");
+  if (!/^\d{4}-\d{2}$/.test(month)) return sendError(res, 400, "Nieprawidłowy miesiąc");
 
   try {
     const totalResult = await pool.query(`
