@@ -8,6 +8,9 @@ const PORT = process.env.PORT || 3000;
 const APP_PIN = process.env.APP_PIN;
 const SESSION_COOKIE = "finanse_session";
 const sessions = new Map();
+const loginAttempts = new Map();
+const MAX_LOGIN_ATTEMPTS = 5;
+const LOGIN_BLOCK_MS = 15 * 60 * 1000;
 
 if (!APP_PIN) {
   console.warn("APP_PIN is not set. Login will be unavailable until it is configured.");
