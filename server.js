@@ -75,8 +75,26 @@ async function initDb() {
 app.post("/api/login", (req, res) => {
   if (!APP_PIN) return sendError(res, 503, "PIN nie został skonfigurowany na serwerze");
 
+  const clientKey = req.ip || req.socket.remoteAddress || "unknown";
+  const now = Date.now();
+  const attempt = loginAttempts.get(clientKey);
+
+  if (attempt?.blockedUntil && attempt.blockedUntil > now) {
+    return sendError(res, 429, "Za dużo błędnych prób. Spróbuj ponownie później.");
+  }
+
   const pin = String(req.body?.pin || "");
-  if (pin !== APP_PIN) return sendError(res, 401, "Nieprawidłowy PIN");
+  if (pin !== APP_PIN) {
+    const count = (attempt?.count || 0) + 1;
+    if (count >= MAX_LOGIN_ATTEMPTS) {
+      loginAttempts.set(clientKey, { count: 0, blockedUntil: now + LOGIN_BLOCK_MS });
+      return sendError(res, 429, "Za dużo błędnych prób. Dostęp został czasowo zablokowany.");
+    }
+    loginAttempts.set(clientKey, { count, blockedUntil: null });
+    return sendError(res, 401, "Nieprawidłowy PIN");
+  }
+
+  loginAttempts.delete(clientKey);
 
   const token = crypto.randomBytes(32).toString("hex");
   sessions.set(token, { createdAt: Date.now() });
@@ -414,7 +432,7 @@ app.get("/api/export", requireAuth, async (req, res) => {
 
 app.use(express.static("public"));
 
-app.get("*", (req, res) => {
+app.use((req, res) => {
   res.sendFile(require("path").join(__dirname, "public", "index.html"));
 });
 
