@@ -3,6 +3,7 @@ const state = {
   expenses: [],
   month: currentMonth(),
   summaryMonth: currentMonth(),
+  summaryExpenses: [],
   editingExpenseId: null,
 };
 
@@ -119,10 +120,15 @@ async function loadExpenses() {
 }
 
 async function loadSummary() {
-  const summary = await api(`/api/summary?month=${state.summaryMonth}`);
+  const [summary, expenses] = await Promise.all([
+    api(`/api/summary?month=${state.summaryMonth}`),
+    api(`/api/expenses?month=${state.summaryMonth}`)
+  ]);
+  state.summaryExpenses = expenses;
   $("summaryMonthTitle").textContent = monthLabel(state.summaryMonth);
   $("summaryTotal").textContent = money(summary.total);
   renderSummary(summary);
+  renderSummaryExpenses();
 }
 
 function renderExpenses() {
@@ -228,6 +234,36 @@ function renderCategorySubcategorySummary(categories, subcategories, total) {
   }).join("");
 }
 
+function renderSummaryExpenses() {
+  const target = $("summaryExpenseList");
+  if (!target) return;
+
+  if (!state.summaryExpenses.length) {
+    target.innerHTML = '<div class="empty">Brak wydatków w tym miesiącu.</div>';
+    return;
+  }
+
+  target.innerHTML = state.summaryExpenses.map((expense) => {
+    const secondary = expense.subcategory_name || expense.description || "";
+    return `
+      <button class="expense-row summary-expense-row" type="button" data-summary-expense-id="${expense.id}">
+        <span class="expense-main">
+          <strong>${escapeHtml(expense.category_name || "Bez kategorii")}</strong>
+          <span class="expense-sub">${escapeHtml(secondary)}</span>
+        </span>
+        <span class="expense-side">
+          <strong class="expense-amount">${money(expense.amount)}</strong>
+          <span class="expense-date">${dateLabel(expense.expense_date)}</span>
+        </span>
+      </button>
+    `;
+  }).join("");
+
+  target.querySelectorAll("[data-summary-expense-id]").forEach((button) => {
+    button.addEventListener("click", () => openExpense(Number(button.dataset.summaryExpenseId)));
+  });
+}
+
 function renderCategories() {
   const target = $("categoriesList");
   if (!state.categories.length) {
@@ -289,7 +325,9 @@ function openExpense(expenseId = null) {
     $("categorySelect").value = "";
     fillSubcategorySelect();
   } else {
-    const expense = state.expenses.find((item) => item.id === expenseId);
+    const expense =
+      state.expenses.find((item) => item.id === expenseId) ||
+      state.summaryExpenses.find((item) => item.id === expenseId);
     if (!expense) return;
     $("expenseDialogTitle").textContent = "Edytuj wydatek";
     $("amountInput").value = expense.amount;
