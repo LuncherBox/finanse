@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#f5f7f4">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <title>Moje wydatki</title>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <main id="loginView" class="login-shell">
+    <section class="login-card">
+      <div class="app-mark">zł</div>
+      <h1>Moje wydatki</h1>
+      <p>Wpisz PIN, aby otworzyć aplikację.</p>
+      <form id="loginForm">
+        <label class="sr-only" for="pinInput">PIN</label>
+        <input id="pinInput" class="pin-input" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="12" autocomplete="off" placeholder="••••" required>
+        <button class="primary-btn" type="submit">Otwórz</button>
+        <p id="loginError" class="form-error" aria-live="polite"></p>
+      </form>
+    </section>
+  </main>
+
+  <div id="appView" class="app-shell hidden">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Bieżący miesiąc</p>
+        <h1 id="monthTitle">Miesiąc</h1>
+      </div>
+      <button id="logoutBtn" class="icon-btn" type="button" aria-label="Wyloguj">↗</button>
+    </header>
+
+    <section id="expensesTab" class="tab-panel active">
+      <div class="hero">
+        <p>Wydatki w tym miesiącu</p>
+        <strong id="monthTotal">0,00 zł</strong>
+      </div>
+
+      <div class="section-head">
+        <h2>Ostatnie wydatki</h2>
+        <button id="openAddExpense" class="text-btn" type="button">+ Dodaj</button>
+      </div>
+      <div id="expenseList" class="expense-list"></div>
+    </section>
+
+    <section id="summaryTab" class="tab-panel">
+      <div class="month-switcher">
+        <button id="prevMonth" class="icon-btn" type="button" aria-label="Poprzedni miesiąc">‹</button>
+        <div>
+          <p class="eyebrow">Podsumowanie</p>
+          <h2 id="summaryMonthTitle"></h2>
+        </div>
+        <button id="nextMonth" class="icon-btn" type="button" aria-label="Następny miesiąc">›</button>
+      </div>
+
+      <div class="hero compact">
+        <p>Łącznie</p>
+        <strong id="summaryTotal">0,00 zł</strong>
+      </div>
+
+      <div class="section-head">
+        <h2>Na co wydajesz</h2>
+      </div>
+      <div id="summaryBars" class="summary-bars"></div>
+    </section>
+
+    <section id="settingsTab" class="tab-panel">
+      <div class="section-head settings-head">
+        <div>
+          <p class="eyebrow">Konfiguracja</p>
+          <h2>Kategorie</h2>
+        </div>
+        <button id="addCategoryBtn" class="small-btn" type="button">+ Kategoria</button>
+      </div>
+      <p class="muted">Twórz własne kategorie główne i dowolną liczbę podkategorii.</p>
+      <div id="categoriesList" class="category-list"></div>
+
+      <div class="settings-tools">
+        <h2>Dane</h2>
+        <a class="secondary-btn" href="/api/export" download>Eksportuj kopię danych</a>
+      </div>
+    </section>
+
+    <button id="fab" class="fab" type="button" aria-label="Dodaj wydatek">+</button>
+
+    <nav class="bottom-nav" aria-label="Nawigacja">
+      <button class="nav-btn active" data-tab="expenses" type="button"><span>⌂</span>Wydatki</button>
+      <button class="nav-btn" data-tab="summary" type="button"><span>◔</span>Podsumowanie</button>
+      <button class="nav-btn" data-tab="settings" type="button"><span>⚙</span>Ustawienia</button>
+    </nav>
+  </div>
+
+  <dialog id="expenseDialog" class="sheet-dialog">
+    <form id="expenseForm" method="dialog" class="sheet">
+      <div class="sheet-handle"></div>
+      <div class="sheet-head">
+        <h2 id="expenseDialogTitle">Nowy wydatek</h2>
+        <button class="icon-btn" type="button" data-close="expenseDialog">×</button>
+      </div>
+
+      <label>Kwota
+        <div class="amount-field">
+          <input id="amountInput" type="number" min="0.01" step="0.01" inputmode="decimal" placeholder="0,00" required>
+          <span>zł</span>
+        </div>
+      </label>
+
+      <label>Kategoria
+        <select id="categorySelect" required></select>
+      </label>
+
+      <label>Podkategoria
+        <select id="subcategorySelect">
+          <option value="">Bez podkategorii</option>
+        </select>
+      </label>
+
+      <label>Opis <span class="muted">(opcjonalnie)</span>
+        <input id="descriptionInput" type="text" maxlength="300" placeholder="np. Lidl, apteka, abonament">
+      </label>
+
+      <label>Data
+        <input id="dateInput" type="date" required>
+      </label>
+
+      <p id="expenseError" class="form-error"></p>
+      <button class="primary-btn" type="submit">Zapisz wydatek</button>
+      <button id="deleteExpenseBtn" class="danger-btn hidden" type="button">Usuń wydatek</button>
+    </form>
+  </dialog>
+
+  <dialog id="categoryDialog" class="sheet-dialog">
+    <form id="categoryForm" method="dialog" class="sheet">
+      <div class="sheet-handle"></div>
+      <div class="sheet-head">
+        <h2>Nowa kategoria</h2>
+        <button class="icon-btn" type="button" data-close="categoryDialog">×</button>
+      </div>
+      <label>Nazwa kategorii
+        <input id="categoryNameInput" type="text" maxlength="100" placeholder="np. Zdrowie" required>
+      </label>
+      <p id="categoryError" class="form-error"></p>
+      <button class="primary-btn" type="submit">Dodaj kategorię</button>
+    </form>
+  </dialog>
+
+  <dialog id="subcategoryDialog" class="sheet-dialog">
+    <form id="subcategoryForm" method="dialog" class="sheet">
+      <div class="sheet-handle"></div>
+      <div class="sheet-head">
+        <h2>Nowa podkategoria</h2>
+        <button class="icon-btn" type="button" data-close="subcategoryDialog">×</button>
+      </div>
+      <input id="subcategoryCategoryId" type="hidden">
+      <label>Nazwa podkategorii
+        <input id="subcategoryNameInput" type="text" maxlength="100" placeholder="np. Apteka" required>
+      </label>
+      <p id="subcategoryError" class="form-error"></p>
+      <button class="primary-btn" type="submit">Dodaj podkategorię</button>
+    </form>
+  </dialog>
+
+  <script src="/app.js" defer></script>
+</body>
+</html>
