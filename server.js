@@ -377,7 +377,7 @@ app.delete("/api/expenses/:id", requireAuth, async (req, res) => {
 
 app.get("/api/summary", requireAuth, async (req, res) => {
   const month = String(req.query.month || "");
-  if (!/^\d{4}-\d{2}$/.test(month)) return sendError(res, 400, "Nieprawidłowy miesiąc");
+  if (!/^\\d{4}-\\d{2}$/.test(month)) return sendError(res, 400, "Nieprawidłowy miesiąc");
 
   try {
     const totalResult = await pool.query(`
@@ -399,9 +399,24 @@ app.get("/api/summary", requireAuth, async (req, res) => {
       ORDER BY amount DESC
     `, [month + "-01"]);
 
+    const subcategoriesResult = await pool.query(`
+      SELECT
+        COALESCE(c.name, 'Bez kategorii') AS category_name,
+        COALESCE(s.name, 'Bez podkategorii') AS subcategory_name,
+        SUM(e.amount)::float AS amount
+      FROM expenses e
+      LEFT JOIN categories c ON c.id = e.category_id
+      LEFT JOIN subcategories s ON s.id = e.subcategory_id
+      WHERE e.expense_date >= $1::date
+        AND e.expense_date < ($1::date + INTERVAL '1 month')
+      GROUP BY c.id, c.name, s.id, s.name
+      ORDER BY c.name ASC, amount DESC
+    `, [month + "-01"]);
+
     res.json({
       total: totalResult.rows[0].total,
       categories: categoriesResult.rows,
+      subcategories: subcategoriesResult.rows,
     });
   } catch (error) {
     console.error(error);
