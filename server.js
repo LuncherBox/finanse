@@ -80,7 +80,7 @@ app.post("/api/login", (req, res) => {
 
   res.cookie(SESSION_COOKIE, token, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
+    secure: Boolean(process.env.RAILWAY_ENVIRONMENT || process.env.NODE_ENV === "production"),
     sameSite: "strict",
     path: "/",
   });
