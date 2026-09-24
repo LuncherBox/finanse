@@ -1,0 +1,9 @@
+{
+  "name": "Moje wydatki",
+  "short_name": "Wydatki",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f5f7f4",
+  "theme_color": "#f5f7f4",
+  "description": "Minimalistyczna aplikacja do śledzenia wydatków"
+}
