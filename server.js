@@ -28,12 +28,27 @@ function sendError(res, status, message) {
   return res.status(status).json({ error: message });
 }
 
-function requireAuth(req, res, next) {
-  const token = req.cookies[SESSION_COOKIE];
-  if (!token || !sessions.has(token)) {
-    return sendError(res, 401, "Brak autoryzacji");
+async function requireAuth(req, res, next) {
+  try {
+    const token = req.cookies[SESSION_COOKIE];
+    if (!token) return sendError(res, 401, "Brak autoryzacji");
+
+    const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+    const result = await pool.query(
+      "SELECT id FROM trusted_devices WHERE token_hash=$1 AND expires_at > NOW() LIMIT 1",
+      [tokenHash]
+    );
+
+    if (!result.rowCount) {
+      res.clearCookie(SESSION_COOKIE, { path: "/" });
+      return sendError(res, 401, "Brak autoryzacji");
+    }
+
+    next();
+  } catch (error) {
+    console.error(error);
+    sendError(res, 500, "Nie udało się zweryfikować dostępu");
   }
-  next();
 }
 
 async function initDb() {
@@ -69,6 +84,16 @@ async function initDb() {
 
     CREATE INDEX IF NOT EXISTS idx_expenses_date ON expenses(expense_date);
     CREATE INDEX IF NOT EXISTS idx_expenses_category ON expenses(category_id);
+
+    CREATE TABLE IF NOT EXISTS trusted_devices (
+      id SERIAL PRIMARY KEY,
+      token_hash CHAR(64) NOT NULL UNIQUE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      expires_at TIMESTAMPTZ NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_trusted_devices_expires_at
+      ON trusted_devices(expires_at);
   `);
 }
 
@@ -97,21 +122,38 @@ app.post("/api/login", (req, res) => {
   loginAttempts.delete(clientKey);
 
   const token = crypto.randomBytes(32).toString("hex");
-  sessions.set(token, { createdAt: Date.now() });
+  const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
 
-  res.cookie(SESSION_COOKIE, token, {
-    httpOnly: true,
-    secure: Boolean(process.env.RAILWAY_ENVIRONMENT || process.env.NODE_ENV === "production"),
-    sameSite: "strict",
-    path: "/",
+  pool.query(
+    "INSERT INTO trusted_devices(token_hash, expires_at) VALUES($1, NOW() + INTERVAL '90 days')",
+    [tokenHash]
+  ).then(() => {
+    res.cookie(SESSION_COOKIE, token, {
+      httpOnly: true,
+      secure: Boolean(process.env.RAILWAY_ENVIRONMENT || process.env.NODE_ENV === "production"),
+      sameSite: "strict",
+      path: "/",
+      maxAge: 90 * 24 * 60 * 60 * 1000,
+    });
+
+    res.json({ ok: true });
+  }).catch((error) => {
+    console.error(error);
+    sendError(res, 500, "Nie udało się zapisać zaufanego urządzenia");
   });
-
-  res.json({ ok: true });
 });
 
-app.post("/api/logout", (req, res) => {
-  const token = req.cookies[SESSION_COOKIE];
-  if (token) sessions.delete(token);
+app.post("/api/logout", async (req, res) => {
+  try {
+    const token = req.cookies[SESSION_COOKIE];
+    if (token) {
+      const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+      await pool.query("DELETE FROM trusted_devices WHERE token_hash=$1", [tokenHash]);
+    }
+  } catch (error) {
+    console.error(error);
+  }
+
   res.clearCookie(SESSION_COOKIE, { path: "/" });
   res.json({ ok: true });
 });
