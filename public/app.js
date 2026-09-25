@@ -160,78 +160,70 @@ function renderExpenses() {
 }
 
 function renderSummary(summary) {
-  renderCategorySummary(summary.categories || [], Number(summary.total) || 0);
-  renderCategorySubcategorySummary(
+  renderCategorySummary(
     summary.categories || [],
     summary.subcategories || [],
     Number(summary.total) || 0
   );
 }
 
-function renderCategorySummary(rows, total) {
+function renderCategorySummary(categories, subcategories, total) {
   const target = $("summaryBars");
-  if (!rows.length) {
-    target.innerHTML = '<div class="empty">Brak danych dla tego miesiąca.</div>';
-    return;
-  }
-
-  const safeTotal = total || 1;
-  target.innerHTML = rows.map((item) => {
-    const pct = Math.round((Number(item.amount) / safeTotal) * 100);
-    return `
-      <div class="summary-item">
-        <div class="summary-top">
-          <strong>${escapeHtml(item.category_name)}</strong>
-          <strong>${money(item.amount)} · ${pct}%</strong>
-        </div>
-        <div class="bar-track"><div class="bar-fill" style="width:${pct}%"></div></div>
-      </div>
-    `;
-  }).join("");
-}
-
-function renderCategorySubcategorySummary(categories, subcategories, total) {
-  const target = $("subcategorySummary");
-
   if (!categories.length) {
     target.innerHTML = '<div class="empty">Brak danych dla tego miesiąca.</div>';
     return;
   }
 
-  target.innerHTML = categories.map((category) => {
-    const categoryAmount = Number(category.amount || 0);
+  const safeTotal = total || 1;
+
+  target.innerHTML = categories.map((category, index) => {
+    const amount = Number(category.amount || 0);
+    const pct = Math.round((amount / safeTotal) * 100);
     const rows = subcategories.filter(
       (item) => item.category_name === category.category_name
     );
 
     return `
-      <div class="category-summary-group">
-        <div class="category-summary-head">
-          <strong class="category-summary-name">${escapeHtml(category.category_name)}</strong>
-          <strong class="category-summary-amount">${money(categoryAmount)}</strong>
-        </div>
+      <div class="summary-category-card">
+        <button class="summary-category-toggle" type="button" data-summary-category="${index}" aria-expanded="false">
+          <span class="summary-category-copy">
+            <strong>${escapeHtml(category.category_name)}</strong>
+            <span class="bar-track"><span class="bar-fill" style="width:${pct}%"></span></span>
+          </span>
+          <span class="summary-category-side">
+            <strong>${money(amount)} · ${pct}%</strong>
+            <span class="summary-chevron">⌄</span>
+          </span>
+        </button>
 
-        <div class="category-summary-subs">
+        <div class="summary-subcategory-list" data-summary-subcategories="${index}" hidden>
           ${rows.map((item) => {
-            const amount = Number(item.amount || 0);
-            const pctOfCategory = categoryAmount
-              ? Math.round((amount / categoryAmount) * 100)
-              : 0;
-
+            const subAmount = Number(item.amount || 0);
+            const subPct = amount ? Math.round((subAmount / amount) * 100) : 0;
             return `
-              <div class="subcategory-row">
+              <div class="summary-subcategory-row">
                 <span class="subcategory-info">
                   <strong>${escapeHtml(item.subcategory_name)}</strong>
-                  <small>${pctOfCategory}%</small>
+                  <small>${subPct}%</small>
                 </span>
-                <strong class="subcategory-amount">${money(amount)}</strong>
+                <strong class="subcategory-amount">${money(subAmount)}</strong>
               </div>
             `;
-          }).join("")}
+          }).join("") || '<div class="summary-no-subs">Brak podkategorii</div>'}
         </div>
       </div>
     `;
   }).join("");
+
+  target.querySelectorAll("[data-summary-category]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const id = button.dataset.summaryCategory;
+      const list = target.querySelector(`[data-summary-subcategories="${id}"]`);
+      const isOpen = button.getAttribute("aria-expanded") === "true";
+      button.setAttribute("aria-expanded", String(!isOpen));
+      list.hidden = isOpen;
+    });
+  });
 }
 
 function renderSummaryExpenses() {
@@ -421,6 +413,16 @@ $("subcategoryForm").addEventListener("submit", async (event) => {
 
 document.querySelectorAll("[data-close]").forEach((button) => {
   button.addEventListener("click", () => $(button.dataset.close).close());
+});
+
+document.querySelectorAll("[data-summary-view]").forEach((button) => {
+  button.addEventListener("click", () => {
+    document.querySelectorAll("[data-summary-view]").forEach((item) => item.classList.remove("active"));
+    document.querySelectorAll(".summary-view").forEach((item) => item.classList.remove("active"));
+    button.classList.add("active");
+    const view = button.dataset.summaryView;
+    $(view === "categories" ? "summaryCategoriesView" : "summaryExpensesView").classList.add("active");
+  });
 });
 
 document.querySelectorAll(".nav-btn").forEach((button) => {
