@@ -57,3 +57,22 @@
 .summary-subcategory-row{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:12px 0;border-bottom:1px solid #edf0ee}
 .summary-subcategory-row:last-child{border-bottom:0}
 .summary-no-subs{padding:13px 0;color:var(--muted);font-size:13px}
+
+/* Plus/minus affordance for expandable categories */
+.summary-toggle-icon{
+  display:grid;
+  place-items:center;
+  width:24px;
+  height:24px;
+  border-radius:8px;
+  background:var(--soft);
+  color:var(--accent-dark);
+  font-size:18px;
+  line-height:1;
+  font-weight:800;
+  flex-shrink:0;
+}
+.summary-category-toggle[aria-expanded="true"] .summary-toggle-icon{
+  background:#dfece5;
+}
+.summary-chevron{display:none!important}
