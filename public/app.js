@@ -192,7 +192,7 @@ function renderCategorySummary(categories, subcategories, total) {
           </span>
           <span class="summary-category-side">
             <strong>${money(amount)} · ${pct}%</strong>
-            <span class="summary-chevron">⌄</span>
+            <span class="summary-toggle-icon" aria-hidden="true">+</span>
           </span>
         </button>
 
@@ -222,6 +222,8 @@ function renderCategorySummary(categories, subcategories, total) {
       const isOpen = button.getAttribute("aria-expanded") === "true";
       button.setAttribute("aria-expanded", String(!isOpen));
       list.hidden = isOpen;
+      const icon = button.querySelector(".summary-toggle-icon");
+      if (icon) icon.textContent = isOpen ? "+" : "−";
     });
   });
 }
