@@ -62,20 +62,18 @@
         <strong id="summaryTotal">0,00 zł</strong>
       </div>
 
-      <div class="section-head">
-        <h2>Kategorie</h2>
+      <div class="summary-view-switch" role="tablist" aria-label="Widok podsumowania">
+        <button id="summaryCategoriesBtn" class="summary-view-btn active" type="button" data-summary-view="categories">Kategorie</button>
+        <button id="summaryExpensesBtn" class="summary-view-btn" type="button" data-summary-view="expenses">Wydatki w miesiącu</button>
       </div>
-      <div id="summaryBars" class="summary-bars"></div>
 
-      <div class="section-head summary-sub-head">
-        <h2>Kategorie i podkategorie</h2>
+      <div id="summaryCategoriesView" class="summary-view active">
+        <div id="summaryBars" class="summary-bars"></div>
       </div>
-      <div id="subcategorySummary" class="summary-bars"></div>
 
-      <div class="section-head summary-expenses-head">
-        <h2>Wydatki w miesiącu</h2>
+      <div id="summaryExpensesView" class="summary-view">
+        <div id="summaryExpenseList" class="expense-list"></div>
       </div>
-      <div id="summaryExpenseList" class="expense-list"></div>
     </section>
 
     <section id="settingsTab" class="tab-panel">
