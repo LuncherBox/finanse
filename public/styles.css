@@ -84,3 +84,35 @@
 .editable-sub-list{align-items:center}
 .editable-chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:#fafcfb;border-radius:999px;padding:6px 7px 6px 10px;font-size:13px}
 .chip-edit-btn{width:22px;height:22px;border-radius:50%;font-size:13px;background:var(--soft)}
+
+/* Quick category and subcategory pickers */
+.choice-field{display:grid;gap:8px}
+.choice-label{font-size:13px;font-weight:750;color:#4d5c55}
+.choice-scroll{
+  display:flex;
+  gap:8px;
+  overflow-x:auto;
+  padding:2px 1px 6px;
+  margin-right:-20px;
+  padding-right:20px;
+  scrollbar-width:none;
+  -webkit-overflow-scrolling:touch;
+}
+.choice-scroll::-webkit-scrollbar{display:none}
+.choice-btn{
+  flex:0 0 auto;
+  border:1px solid var(--line);
+  background:#fafcfb;
+  color:var(--text);
+  border-radius:999px;
+  padding:10px 14px;
+  font-size:14px;
+  font-weight:700;
+  white-space:nowrap;
+}
+.choice-btn.active{
+  background:var(--accent);
+  border-color:var(--accent);
+  color:#fff;
+}
+.choice-btn:active{transform:scale(.98)}
