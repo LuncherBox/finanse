@@ -117,15 +117,17 @@
         </div>
       </label>
 
-      <label>Kategoria
-        <select id="categorySelect" required></select>
-      </label>
+      <div class="choice-field">
+        <span class="choice-label">Kategoria</span>
+        <div id="categoryButtons" class="choice-scroll" role="group" aria-label="Wybierz kategorię"></div>
+        <input id="categorySelect" type="hidden" required>
+      </div>
 
-      <label>Podkategoria
-        <select id="subcategorySelect">
-          <option value="">Bez podkategorii</option>
-        </select>
-      </label>
+      <div id="subcategoryField" class="choice-field hidden">
+        <span class="choice-label">Podkategoria</span>
+        <div id="subcategoryButtons" class="choice-scroll" role="group" aria-label="Wybierz podkategorię"></div>
+        <input id="subcategorySelect" type="hidden">
+      </div>
 
       <label>Opis <span class="muted">(opcjonalnie)</span>
         <input id="descriptionInput" type="text" maxlength="300" placeholder="np. Lidl, apteka, abonament">
