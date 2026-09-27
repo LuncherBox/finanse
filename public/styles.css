@@ -76,3 +76,11 @@
   background:#dfece5;
 }
 .summary-chevron{display:none!important}
+
+/* Category and subcategory editing */
+.category-actions{display:flex;align-items:center;gap:8px}
+.icon-edit-btn,.chip-edit-btn{border:0;background:transparent;color:var(--accent-dark);display:grid;place-items:center;padding:0}
+.icon-edit-btn{width:30px;height:30px;border-radius:9px;background:var(--soft);font-size:16px}
+.editable-sub-list{align-items:center}
+.editable-chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:#fafcfb;border-radius:999px;padding:6px 7px 6px 10px;font-size:13px}
+.chip-edit-btn{width:22px;height:22px;border-radius:50%;font-size:13px;background:var(--soft)}
