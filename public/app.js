@@ -110,7 +110,7 @@ $("logoutBtn").addEventListener("click", async () => {
 async function loadCategories() {
   state.categories = await api("/api/categories");
   renderCategories();
-  fillCategorySelect();
+  if (document.body.contains($("categoryButtons"))) fillCategorySelect($("categorySelect").value || "");
 }
 
 async function loadExpenses() {
@@ -334,23 +334,81 @@ function renderCategories() {
   });
 }
 
-function fillCategorySelect() {
-  const select = $("categorySelect");
-  select.innerHTML = '<option value="">Wybierz kategorię</option>' +
-    state.categories.map((category) => `<option value="${category.id}">${escapeHtml(category.name)}</option>`).join("");
-  fillSubcategorySelect();
+function fillCategorySelect(selectedId = "") {
+  const target = $("categoryButtons");
+  $("categorySelect").value = selectedId || "";
+
+  target.innerHTML = state.categories.map((category) => {
+    const active = String(category.id) === String(selectedId);
+    return `
+      <button
+        type="button"
+        class="choice-btn ${active ? "active" : ""}"
+        data-category-choice="${category.id}"
+      >${escapeHtml(category.name)}</button>
+    `;
+  }).join("");
+
+  target.querySelectorAll("[data-category-choice]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const categoryId = button.dataset.categoryChoice;
+      $("categorySelect").value = categoryId;
+
+      target.querySelectorAll(".choice-btn").forEach((item) => item.classList.remove("active"));
+      button.classList.add("active");
+
+      fillSubcategorySelect("", categoryId);
+    });
+  });
+
+  fillSubcategorySelect("", selectedId);
 }
 
-function fillSubcategorySelect(selectedId = "") {
-  const categoryId = Number($("categorySelect").value);
+function fillSubcategorySelect(selectedId = "", categoryIdOverride = null) {
+  const categoryId = Number(categoryIdOverride || $("categorySelect").value);
   const category = state.categories.find((item) => item.id === categoryId);
   const subs = category?.subcategories || [];
+  const field = $("subcategoryField");
+  const target = $("subcategoryButtons");
 
-  $("subcategorySelect").innerHTML = '<option value="">Bez podkategorii</option>' +
-    subs.map((sub) => `<option value="${sub.id}" ${String(sub.id) === String(selectedId) ? "selected" : ""}>${escapeHtml(sub.name)}</option>`).join("");
+  $("subcategorySelect").value = selectedId || "";
+
+  if (!categoryId || !subs.length) {
+    field.classList.add("hidden");
+    target.innerHTML = "";
+    $("subcategorySelect").value = "";
+    return;
+  }
+
+  field.classList.remove("hidden");
+
+  target.innerHTML = `
+    <button
+      type="button"
+      class="choice-btn ${!selectedId ? "active" : ""}"
+      data-subcategory-choice=""
+    >Bez podkategorii</button>
+    ${subs.map((sub) => {
+      const active = String(sub.id) === String(selectedId);
+      return `
+        <button
+          type="button"
+          class="choice-btn ${active ? "active" : ""}"
+          data-subcategory-choice="${sub.id}"
+        >${escapeHtml(sub.name)}</button>
+      `;
+    }).join("")}
+  `;
+
+  target.querySelectorAll("[data-subcategory-choice]").forEach((button) => {
+    button.addEventListener("click", () => {
+      $("subcategorySelect").value = button.dataset.subcategoryChoice;
+
+      target.querySelectorAll(".choice-btn").forEach((item) => item.classList.remove("active"));
+      button.classList.add("active");
+    });
+  });
 }
-
-$("categorySelect").addEventListener("change", () => fillSubcategorySelect());
 
 function openExpense(expenseId = null) {
   state.editingExpenseId = expenseId;
@@ -362,8 +420,7 @@ function openExpense(expenseId = null) {
     $("amountInput").value = "";
     $("descriptionInput").value = "";
     $("dateInput").value = todayISO();
-    $("categorySelect").value = "";
-    fillSubcategorySelect();
+    fillCategorySelect("");
   } else {
     const expense =
       state.expenses.find((item) => item.id === expenseId) ||
@@ -373,8 +430,8 @@ function openExpense(expenseId = null) {
     $("amountInput").value = expense.amount;
     $("descriptionInput").value = expense.description || "";
     $("dateInput").value = String(expense.expense_date).slice(0, 10);
-    $("categorySelect").value = expense.category_id || "";
-    fillSubcategorySelect(expense.subcategory_id || "");
+    fillCategorySelect(expense.category_id || "");
+    fillSubcategorySelect(expense.subcategory_id || "", expense.category_id || "");
   }
 
   expenseDialog.showModal();
@@ -387,6 +444,11 @@ $("fab").addEventListener("click", () => openExpense());
 $("expenseForm").addEventListener("submit", async (event) => {
   event.preventDefault();
   $("expenseError").textContent = "";
+
+  if (!$("categorySelect").value) {
+    $("expenseError").textContent = "Wybierz kategorię";
+    return;
+  }
 
   const payload = {
     amount: $("amountInput").value,
