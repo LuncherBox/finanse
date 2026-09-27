@@ -5,6 +5,8 @@ const state = {
   summaryMonth: currentMonth(),
   summaryExpenses: [],
   editingExpenseId: null,
+  editingCategoryId: null,
+  editingSubcategoryId: null,
 };
 
 const $ = (id) => document.getElementById(id);
@@ -269,10 +271,18 @@ function renderCategories() {
     <div class="category-card">
       <div class="category-title">
         <strong>${escapeHtml(category.name)}</strong>
-        <button class="text-btn" type="button" data-add-subcategory="${category.id}">+ Podkategoria</button>
+        <div class="category-actions">
+          <button class="icon-edit-btn" type="button" data-edit-category="${category.id}" aria-label="Edytuj kategorię">✎</button>
+          <button class="text-btn" type="button" data-add-subcategory="${category.id}">+ Podkategoria</button>
+        </div>
       </div>
-      <div class="sub-list">
-        ${category.subcategories.map((sub) => `<span class="chip">${escapeHtml(sub.name)}</span>`).join("")}
+      <div class="sub-list editable-sub-list">
+        ${category.subcategories.map((sub) => `
+          <span class="editable-chip">
+            <span>${escapeHtml(sub.name)}</span>
+            <button class="chip-edit-btn" type="button" data-edit-subcategory="${sub.id}" data-subcategory-category="${category.id}" aria-label="Edytuj podkategorię">✎</button>
+          </span>
+        `).join("")}
         ${category.subcategories.length ? "" : '<span class="muted">Brak podkategorii</span>'}
       </div>
     </div>
@@ -280,8 +290,44 @@ function renderCategories() {
 
   target.querySelectorAll("[data-add-subcategory]").forEach((button) => {
     button.addEventListener("click", () => {
+      state.editingSubcategoryId = null;
+      $("subcategoryDialogTitle").textContent = "Nowa podkategoria";
+      $("subcategorySubmitBtn").textContent = "Dodaj podkategorię";
       $("subcategoryCategoryId").value = button.dataset.addSubcategory;
       $("subcategoryNameInput").value = "";
+      $("subcategoryError").textContent = "";
+      subcategoryDialog.showModal();
+    });
+  });
+
+  target.querySelectorAll("[data-edit-category]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const categoryId = Number(button.dataset.editCategory);
+      const category = state.categories.find((item) => item.id === categoryId);
+      if (!category) return;
+
+      state.editingCategoryId = categoryId;
+      $("categoryDialogTitle").textContent = "Edytuj kategorię";
+      $("categorySubmitBtn").textContent = "Zapisz zmiany";
+      $("categoryNameInput").value = category.name;
+      $("categoryError").textContent = "";
+      categoryDialog.showModal();
+    });
+  });
+
+  target.querySelectorAll("[data-edit-subcategory]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const categoryId = Number(button.dataset.subcategoryCategory);
+      const subcategoryId = Number(button.dataset.editSubcategory);
+      const category = state.categories.find((item) => item.id === categoryId);
+      const subcategory = category?.subcategories.find((item) => item.id === subcategoryId);
+      if (!subcategory) return;
+
+      state.editingSubcategoryId = subcategoryId;
+      $("subcategoryDialogTitle").textContent = "Edytuj podkategorię";
+      $("subcategorySubmitBtn").textContent = "Zapisz zmiany";
+      $("subcategoryCategoryId").value = categoryId;
+      $("subcategoryNameInput").value = subcategory.name;
       $("subcategoryError").textContent = "";
       subcategoryDialog.showModal();
     });
@@ -377,6 +423,9 @@ $("deleteExpenseBtn").addEventListener("click", async () => {
 });
 
 $("addCategoryBtn").addEventListener("click", () => {
+  state.editingCategoryId = null;
+  $("categoryDialogTitle").textContent = "Nowa kategoria";
+  $("categorySubmitBtn").textContent = "Dodaj kategorię";
   $("categoryNameInput").value = "";
   $("categoryError").textContent = "";
   categoryDialog.showModal();
@@ -385,13 +434,20 @@ $("addCategoryBtn").addEventListener("click", () => {
 $("categoryForm").addEventListener("submit", async (event) => {
   event.preventDefault();
   $("categoryError").textContent = "";
+
   try {
-    await api("/api/categories", {
-      method: "POST",
-      body: JSON.stringify({ name: $("categoryNameInput").value }),
-    });
+    const isEditing = Boolean(state.editingCategoryId);
+    await api(
+      isEditing ? `/api/categories/${state.editingCategoryId}` : "/api/categories",
+      {
+        method: isEditing ? "PATCH" : "POST",
+        body: JSON.stringify({ name: $("categoryNameInput").value }),
+      }
+    );
+
     categoryDialog.close();
-    await loadCategories();
+    state.editingCategoryId = null;
+    await Promise.all([loadCategories(), loadExpenses(), loadSummary()]);
   } catch (error) {
     $("categoryError").textContent = error.message;
   }
@@ -400,14 +456,24 @@ $("categoryForm").addEventListener("submit", async (event) => {
 $("subcategoryForm").addEventListener("submit", async (event) => {
   event.preventDefault();
   $("subcategoryError").textContent = "";
+
   try {
+    const isEditing = Boolean(state.editingSubcategoryId);
     const categoryId = $("subcategoryCategoryId").value;
-    await api(`/api/categories/${categoryId}/subcategories`, {
-      method: "POST",
-      body: JSON.stringify({ name: $("subcategoryNameInput").value }),
-    });
+
+    await api(
+      isEditing
+        ? `/api/subcategories/${state.editingSubcategoryId}`
+        : `/api/categories/${categoryId}/subcategories`,
+      {
+        method: isEditing ? "PATCH" : "POST",
+        body: JSON.stringify({ name: $("subcategoryNameInput").value }),
+      }
+    );
+
     subcategoryDialog.close();
-    await loadCategories();
+    state.editingSubcategoryId = null;
+    await Promise.all([loadCategories(), loadExpenses(), loadSummary()]);
   } catch (error) {
     $("subcategoryError").textContent = error.message;
   }
