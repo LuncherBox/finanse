@@ -145,14 +145,14 @@
     <form id="categoryForm" method="dialog" class="sheet">
       <div class="sheet-handle"></div>
       <div class="sheet-head">
-        <h2>Nowa kategoria</h2>
+        <h2 id="categoryDialogTitle">Nowa kategoria</h2>
         <button class="icon-btn" type="button" data-close="categoryDialog">×</button>
       </div>
       <label>Nazwa kategorii
         <input id="categoryNameInput" type="text" maxlength="100" placeholder="np. Zdrowie" required>
       </label>
       <p id="categoryError" class="form-error"></p>
-      <button class="primary-btn" type="submit">Dodaj kategorię</button>
+      <button id="categorySubmitBtn" class="primary-btn" type="submit">Dodaj kategorię</button>
     </form>
   </dialog>
 
@@ -160,7 +160,7 @@
     <form id="subcategoryForm" method="dialog" class="sheet">
       <div class="sheet-handle"></div>
       <div class="sheet-head">
-        <h2>Nowa podkategoria</h2>
+        <h2 id="subcategoryDialogTitle">Nowa podkategoria</h2>
         <button class="icon-btn" type="button" data-close="subcategoryDialog">×</button>
       </div>
       <input id="subcategoryCategoryId" type="hidden">
@@ -168,7 +168,7 @@
         <input id="subcategoryNameInput" type="text" maxlength="100" placeholder="np. Apteka" required>
       </label>
       <p id="subcategoryError" class="form-error"></p>
-      <button class="primary-btn" type="submit">Dodaj podkategorię</button>
+      <button id="subcategorySubmitBtn" class="primary-btn" type="submit">Dodaj podkategorię</button>
     </form>
   </dialog>
 
