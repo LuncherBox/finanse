@@ -171,12 +171,36 @@
 
       <p id="expenseError" class="form-error"></p>
       <button class="primary-btn" type="submit">Zapisz wydatek</button>
+      <button id="refundExpenseBtn" class="secondary-btn refund-btn hidden" type="button">Zwrot</button>
+      <div id="refundInfo" class="refund-info hidden"></div>
       <button id="deleteExpenseBtn" class="danger-btn hidden" type="button">Usuń wydatek</button>
     </form>
   </dialog>
 
+  <dialog id="refundDialog" class="sheet-dialog">
+    <form id="refundForm" class="sheet">
+      <div class="sheet-handle"></div>
+      <div class="sheet-head">
+        <h2>Zwrot wydatku</h2>
+        <button class="icon-btn" type="button" data-close="refundDialog">×</button>
+      </div>
+      <label>Kwota zwrotu
+        <div class="amount-field">
+          <input id="refundAmountInput" type="number" min="0.01" step="0.01" inputmode="decimal" required>
+          <span>zł</span>
+        </div>
+      </label>
+      <label>Data otrzymania zwrotu
+        <input id="refundDateInput" type="date" required>
+      </label>
+      <p id="refundError" class="form-error"></p>
+      <button class="primary-btn" type="submit">Zapisz zwrot</button>
+      <button id="deleteRefundBtn" class="danger-btn hidden" type="button">Usuń informację o zwrocie</button>
+    </form>
+  </dialog>
+
   <dialog id="planDialog" class="sheet-dialog">
-    <form id="planForm" method="dialog" class="sheet plan-sheet">
+    <form id="planForm" class="sheet plan-sheet">
       <div class="sheet-handle"></div>
       <div class="sheet-head">
         <h2 id="planDialogTitle">Nowy planowany wydatek</h2>
@@ -275,6 +299,7 @@
       </label>
       <p id="categoryError" class="form-error"></p>
       <button id="categorySubmitBtn" class="primary-btn" type="submit">Dodaj kategorię</button>
+      <button id="deleteCategoryBtn" class="danger-btn hidden" type="button">Usuń kategorię</button>
     </form>
   </dialog>
 
@@ -291,6 +316,7 @@
       </label>
       <p id="subcategoryError" class="form-error"></p>
       <button id="subcategorySubmitBtn" class="primary-btn" type="submit">Dodaj podkategorię</button>
+      <button id="deleteSubcategoryBtn" class="danger-btn hidden" type="button">Usuń podkategorię</button>
     </form>
   </dialog>
 
