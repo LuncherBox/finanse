@@ -23,6 +23,7 @@ const categoryDialog = $("categoryDialog");
 const subcategoryDialog = $("subcategoryDialog");
 const planDialog = $("planDialog");
 const payPlanDialog = $("payPlanDialog");
+const refundDialog = $("refundDialog");
 
 function currentMonth() {
   const d = new Date();
@@ -249,11 +250,16 @@ function renderExpenses() {
   }
 
   target.innerHTML = state.expenses.map((expense) => {
-    const secondary = expense.subcategory_name || expense.description || "";
+    const isRefund = expense.transaction_type === "refund";
+    const secondary = isRefund
+      ? (expense.subcategory_name || "Zwrot")
+      : (expense.subcategory_name || expense.description || "");
+
     return `
-      <button class="expense-row" type="button" data-expense-id="${expense.id}">
+      <button class="expense-row ${isRefund ? "refund-row" : ""}" type="button"
+        ${isRefund ? "" : `data-expense-id="${expense.id}"`}>
         <span class="expense-main">
-          <strong>${escapeHtml(expense.category_name || "Bez kategorii")}</strong>
+          <strong>${isRefund ? "Zwrot · " : ""}${escapeHtml(expense.category_name || "Bez kategorii")}</strong>
           <span class="expense-sub">${escapeHtml(secondary)}</span>
         </span>
         <span class="expense-side">
@@ -289,6 +295,7 @@ function renderCategorySummary(categories, subcategories, total) {
   target.innerHTML = categories.map((category, index) => {
     const amount = Number(category.amount || 0);
     const pct = Math.round((amount / safeTotal) * 100);
+    const barPct = Math.min(100, Math.abs(pct));
     const rows = subcategories.filter(
       (item) => item.category_name === category.category_name
     );
@@ -298,7 +305,7 @@ function renderCategorySummary(categories, subcategories, total) {
         <button class="summary-category-toggle" type="button" data-summary-category="${index}" aria-expanded="false">
           <span class="summary-category-copy">
             <strong>${escapeHtml(category.category_name)}</strong>
-            <span class="bar-track"><span class="bar-fill" style="width:${pct}%"></span></span>
+            <span class="bar-track"><span class="bar-fill" style="width:${barPct}%"></span></span>
           </span>
           <span class="summary-category-side">
             <strong>${money(amount)} · ${pct}%</strong>
@@ -348,11 +355,16 @@ function renderSummaryExpenses() {
   }
 
   target.innerHTML = state.summaryExpenses.map((expense) => {
-    const secondary = expense.subcategory_name || expense.description || "";
+    const isRefund = expense.transaction_type === "refund";
+    const secondary = isRefund
+      ? (expense.subcategory_name || "Zwrot")
+      : (expense.subcategory_name || expense.description || "");
+
     return `
-      <button class="expense-row summary-expense-row" type="button" data-summary-expense-id="${expense.id}">
+      <button class="expense-row summary-expense-row ${isRefund ? "refund-row" : ""}" type="button"
+        ${isRefund ? "" : `data-summary-expense-id="${expense.id}"`}>
         <span class="expense-main">
-          <strong>${escapeHtml(expense.category_name || "Bez kategorii")}</strong>
+          <strong>${isRefund ? "Zwrot · " : ""}${escapeHtml(expense.category_name || "Bez kategorii")}</strong>
           <span class="expense-sub">${escapeHtml(secondary)}</span>
         </span>
         <span class="expense-side">
@@ -431,7 +443,82 @@ function fillPlanSubcategorySelect(selectedId = "", categoryIdOverride = null) {
 
 function setPlanRecurrence(value) {
   $("planRecurrenceInput").value = value;
-  document.querySelectorAll("[data-recurrence]").forEach((button) => {
+  
+$("deleteCategoryBtn").addEventListener("click", async () => {
+  if (!state.editingCategoryId) return;
+  if (!confirm("Usunąć tę kategorię z dostępnych opcji? Stare wydatki zachowają jej nazwę.")) return;
+  try {
+    await api(`/api/categories/${state.editingCategoryId}`, { method: "DELETE" });
+    categoryDialog.close();
+    state.editingCategoryId = null;
+    await Promise.all([loadCategories(), loadExpenses(), loadSummary(), loadPlan()]);
+  } catch (error) {
+    $("categoryError").textContent = error.message;
+  }
+});
+
+$("deleteSubcategoryBtn").addEventListener("click", async () => {
+  if (!state.editingSubcategoryId) return;
+  if (!confirm("Usunąć tę podkategorię z dostępnych opcji? Stare wydatki zachowają jej nazwę.")) return;
+  try {
+    await api(`/api/subcategories/${state.editingSubcategoryId}`, { method: "DELETE" });
+    subcategoryDialog.close();
+    state.editingSubcategoryId = null;
+    await Promise.all([loadCategories(), loadExpenses(), loadSummary(), loadPlan()]);
+  } catch (error) {
+    $("subcategoryError").textContent = error.message;
+  }
+});
+
+$("refundExpenseBtn").addEventListener("click", () => {
+  if (!state.editingExpenseId) return;
+  const expense =
+    state.expenses.find((item) => item.id === state.editingExpenseId && item.transaction_type !== "refund") ||
+    state.summaryExpenses.find((item) => item.id === state.editingExpenseId && item.transaction_type !== "refund");
+  if (!expense) return;
+
+  $("refundError").textContent = "";
+  $("refundAmountInput").value = expense.refund_amount || expense.amount;
+  $("refundDateInput").value = expense.refund_date ? String(expense.refund_date).slice(0,10) : todayISO();
+  $("deleteRefundBtn").classList.toggle("hidden", !expense.refund_amount);
+  refundDialog.showModal();
+});
+
+$("refundForm").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  $("refundError").textContent = "";
+  if (!state.editingExpenseId) return;
+
+  try {
+    await api(`/api/expenses/${state.editingExpenseId}/refund`, {
+      method: "POST",
+      body: JSON.stringify({
+        amount: $("refundAmountInput").value,
+        refundDate: $("refundDateInput").value,
+      }),
+    });
+    refundDialog.close();
+    expenseDialog.close();
+    await Promise.all([loadExpenses(), loadSummary(), loadPlan()]);
+  } catch (error) {
+    $("refundError").textContent = error.message;
+  }
+});
+
+$("deleteRefundBtn").addEventListener("click", async () => {
+  if (!state.editingExpenseId) return;
+  if (!confirm("Usunąć informację o zwrocie?")) return;
+  try {
+    await api(`/api/expenses/${state.editingExpenseId}/refund`, { method: "DELETE" });
+    refundDialog.close();
+    expenseDialog.close();
+    await Promise.all([loadExpenses(), loadSummary(), loadPlan()]);
+  } catch (error) {
+    $("refundError").textContent = error.message;
+  }
+});
+
+document.querySelectorAll("[data-recurrence]").forEach((button) => {
     button.classList.toggle("active", button.dataset.recurrence === value);
   });
   $("planEndDateField").classList.toggle("hidden", value === "one_time");
@@ -521,6 +608,7 @@ function renderCategories() {
       state.editingSubcategoryId = null;
       $("subcategoryDialogTitle").textContent = "Nowa podkategoria";
       $("subcategorySubmitBtn").textContent = "Dodaj podkategorię";
+      $("deleteSubcategoryBtn").classList.add("hidden");
       $("subcategoryCategoryId").value = button.dataset.addSubcategory;
       $("subcategoryNameInput").value = "";
       $("subcategoryError").textContent = "";
@@ -537,6 +625,7 @@ function renderCategories() {
       state.editingCategoryId = categoryId;
       $("categoryDialogTitle").textContent = "Edytuj kategorię";
       $("categorySubmitBtn").textContent = "Zapisz zmiany";
+      $("deleteCategoryBtn").classList.remove("hidden");
       $("categoryNameInput").value = category.name;
       $("categoryError").textContent = "";
       categoryDialog.showModal();
@@ -554,6 +643,7 @@ function renderCategories() {
       state.editingSubcategoryId = subcategoryId;
       $("subcategoryDialogTitle").textContent = "Edytuj podkategorię";
       $("subcategorySubmitBtn").textContent = "Zapisz zmiany";
+      $("deleteSubcategoryBtn").classList.remove("hidden");
       $("subcategoryCategoryId").value = categoryId;
       $("subcategoryNameInput").value = subcategory.name;
       $("subcategoryError").textContent = "";
@@ -642,6 +732,9 @@ function openExpense(expenseId = null) {
   state.editingExpenseId = expenseId;
   $("expenseError").textContent = "";
   $("deleteExpenseBtn").classList.toggle("hidden", !expenseId);
+  $("refundExpenseBtn").classList.toggle("hidden", !expenseId);
+  $("refundInfo").classList.add("hidden");
+  $("refundInfo").textContent = "";
 
   if (!expenseId) {
     $("expenseDialogTitle").textContent = "Nowy wydatek";
@@ -649,6 +742,7 @@ function openExpense(expenseId = null) {
     $("descriptionInput").value = "";
     $("dateInput").value = todayISO();
     fillCategorySelect("");
+    $("refundExpenseBtn").textContent = "Zwrot";
   } else {
     const expense =
       state.expenses.find((item) => item.id === expenseId) ||
@@ -660,6 +754,14 @@ function openExpense(expenseId = null) {
     $("dateInput").value = String(expense.expense_date).slice(0, 10);
     fillCategorySelect(expense.category_id || "");
     fillSubcategorySelect(expense.subcategory_id || "", expense.category_id || "");
+
+    if (expense.refund_amount && expense.refund_date) {
+      $("refundExpenseBtn").textContent = "Edytuj zwrot";
+      $("refundInfo").textContent = `Zwrot: ${money(expense.refund_amount)} · ${dateLabel(expense.refund_date)}`;
+      $("refundInfo").classList.remove("hidden");
+    } else {
+      $("refundExpenseBtn").textContent = "Zwrot";
+    }
   }
 
   expenseDialog.showModal();
@@ -696,7 +798,7 @@ $("expenseForm").addEventListener("submit", async (event) => {
       body: JSON.stringify(payload),
     });
     expenseDialog.close();
-    await Promise.all([loadExpenses(), loadSummary()]);
+    await Promise.all([loadExpenses(), loadSummary(), loadPlan()]);
   } catch (error) {
     $("expenseError").textContent = error.message;
   }
@@ -709,7 +811,7 @@ $("deleteExpenseBtn").addEventListener("click", async () => {
   try {
     await api(`/api/expenses/${state.editingExpenseId}`, { method: "DELETE" });
     expenseDialog.close();
-    await Promise.all([loadExpenses(), loadSummary()]);
+    await Promise.all([loadExpenses(), loadSummary(), loadPlan()]);
   } catch (error) {
     $("expenseError").textContent = error.message;
   }
@@ -837,6 +939,7 @@ $("addCategoryBtn").addEventListener("click", () => {
   state.editingCategoryId = null;
   $("categoryDialogTitle").textContent = "Nowa kategoria";
   $("categorySubmitBtn").textContent = "Dodaj kategorię";
+  $("deleteCategoryBtn").classList.add("hidden");
   $("categoryNameInput").value = "";
   $("categoryError").textContent = "";
   categoryDialog.showModal();
@@ -858,7 +961,7 @@ $("categoryForm").addEventListener("submit", async (event) => {
 
     categoryDialog.close();
     state.editingCategoryId = null;
-    await Promise.all([loadCategories(), loadExpenses(), loadSummary()]);
+    await Promise.all([loadCategories(), loadExpenses(), loadSummary(), loadPlan()]);
   } catch (error) {
     $("categoryError").textContent = error.message;
   }
@@ -884,7 +987,7 @@ $("subcategoryForm").addEventListener("submit", async (event) => {
 
     subcategoryDialog.close();
     state.editingSubcategoryId = null;
-    await Promise.all([loadCategories(), loadExpenses(), loadSummary()]);
+    await Promise.all([loadCategories(), loadExpenses(), loadSummary(), loadPlan()]);
   } catch (error) {
     $("subcategoryError").textContent = error.message;
   }
