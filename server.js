@@ -742,9 +742,11 @@ app.post("/api/plans", requireAuth, async (req, res) => {
     const result = await pool.query(`
       INSERT INTO planned_rules(amount, category_id, subcategory_id, description, start_date, recurrence, end_date)
       VALUES($1,$2,$3,$4,$5,$6,$7)
-      RETURNING id
+      RETURNING id, amount::float AS amount, category_id, subcategory_id, description,
+                to_char(start_date, 'YYYY-MM-DD') AS start_date, recurrence,
+                CASE WHEN end_date IS NULL THEN NULL ELSE to_char(end_date, 'YYYY-MM-DD') END AS end_date
     `, [amount, categoryId, subcategoryId, description, dueDate, recurrence, recurrence === "one_time" ? dueDate : endDate]);
-    res.status(201).json({ id: result.rows[0].id });
+    res.status(201).json({ ok: true, plan: result.rows[0] });
   } catch (error) {
     console.error(error);
     sendError(res, 500, "Nie udało się zapisać planowanego wydatku");
