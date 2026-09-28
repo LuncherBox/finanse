@@ -144,12 +144,13 @@ async function loadSummary() {
 }
 
 async function loadPlan() {
-  const [plans, monthExpenses] = await Promise.all([
-    api(`/api/plans?month=${state.planMonth}`),
-    api(`/api/expenses?month=${state.planMonth}`)
-  ]);
+  try {
+    const [plans, monthExpenses] = await Promise.all([
+      api(`/api/plans?month=${state.planMonth}`),
+      api(`/api/expenses?month=${state.planMonth}`)
+    ]);
 
-  state.plans = plans;
+    state.plans = plans;
   $("planMonthTitle").textContent = monthLabel(state.planMonth);
 
   const planned = plans.reduce((sum, item) => sum + Number(item.amount || 0), 0);
@@ -160,9 +161,16 @@ async function loadPlan() {
   $("planTotal").textContent = money(planned);
   $("planPaid").textContent = money(paid);
   $("planRemaining").textContent = money(remaining);
-  $("planForecast").textContent = money(actual + remaining);
+    $("planForecast").textContent = money(actual + remaining);
 
-  renderPlan();
+    renderPlan();
+  } catch (error) {
+    const target = $("planList");
+    if (target) {
+      target.innerHTML = `<div class="empty plan-error-state">Nie udało się wczytać planu.<br><small>${escapeHtml(error.message)}</small></div>`;
+    }
+    throw error;
+  }
 }
 
 function renderPlan() {
@@ -794,9 +802,20 @@ $("planForm").addEventListener("submit", async (event) => {
       });
     }
 
+    const wasEditing = Boolean(state.editingPlan);
+    const savedMonth = $("planDueDateInput").value.slice(0, 7);
     planDialog.close();
     state.editingPlan = null;
+
+    if (!wasEditing && savedMonth && savedMonth !== state.planMonth) {
+      state.planMonth = savedMonth;
+    }
+
     await loadPlan();
+
+    if (!wasEditing && savedMonth === state.planMonth && !state.plans.length) {
+      throw new Error("Wydatek został wysłany do zapisu, ale nie wrócił z bazy dla tego miesiąca.");
+    }
   } catch (error) {
     $("planError").textContent = error.message;
   }
