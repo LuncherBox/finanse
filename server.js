@@ -133,6 +133,16 @@ async function initDb() {
     CREATE INDEX IF NOT EXISTS idx_planned_rules_start_date ON planned_rules(start_date);
     CREATE INDEX IF NOT EXISTS idx_planned_overrides_occurrence ON planned_overrides(occurrence_date);
     CREATE INDEX IF NOT EXISTS idx_planned_payments_occurrence ON planned_payments(occurrence_date);
+
+    CREATE TABLE IF NOT EXISTS expense_refunds (
+      id SERIAL PRIMARY KEY,
+      expense_id INTEGER NOT NULL UNIQUE REFERENCES expenses(id) ON DELETE CASCADE,
+      amount NUMERIC(12,2) NOT NULL CHECK (amount > 0),
+      refund_date DATE NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_expense_refunds_date ON expense_refunds(refund_date);
   `);
 }
 
@@ -350,31 +360,68 @@ app.get("/api/expenses", requireAuth, async (req, res) => {
 
   try {
     const params = [];
-    let where = "";
+    let expenseWhere = "";
+    let refundWhere = "";
     if (validMonth) {
       params.push(month + "-01");
-      where = `
+      expenseWhere = `
         WHERE e.expense_date >= $1::date
           AND e.expense_date < ($1::date + INTERVAL '1 month')
+      `;
+      refundWhere = `
+        WHERE r.refund_date >= $1::date
+          AND r.refund_date < ($1::date + INTERVAL '1 month')
       `;
     }
 
     const result = await pool.query(`
-      SELECT
-        e.id,
-        e.amount::float AS amount,
-        e.description,
-        e.expense_date,
-        e.created_at,
-        e.category_id,
-        e.subcategory_id,
-        c.name AS category_name,
-        s.name AS subcategory_name
-      FROM expenses e
-      LEFT JOIN categories c ON c.id = e.category_id
-      LEFT JOIN subcategories s ON s.id = e.subcategory_id
-      ${where}
-      ORDER BY e.expense_date DESC, e.created_at DESC
+      SELECT * FROM (
+        SELECT
+          e.id,
+          e.id AS source_expense_id,
+          'expense'::text AS transaction_type,
+          e.amount::float AS amount,
+          e.description,
+          e.expense_date,
+          e.created_at,
+          e.category_id,
+          e.subcategory_id,
+          c.name AS category_name,
+          sc.name AS subcategory_name,
+          r.amount::float AS refund_amount,
+          r.refund_date
+        FROM expenses e
+        LEFT JOIN categories c ON c.id=e.category_id
+        LEFT JOIN subcategories sc ON sc.id=e.subcategory_id
+        LEFT JOIN expense_refunds r ON r.expense_id=e.id
+        ${expenseWhere}
+
+        UNION ALL
+
+        SELECT
+          -r.id AS id,
+          e.id AS source_expense_id,
+          'refund'::text AS transaction_type,
+          (-r.amount)::float AS amount,
+          CASE
+            WHEN e.description IS NULL OR e.description='' THEN 'Zwrot'
+            ELSE 'Zwrot - ' || e.description
+          END AS description,
+          r.refund_date AS expense_date,
+          r.created_at,
+          e.category_id,
+          e.subcategory_id,
+          c.name AS category_name,
+          sc.name AS subcategory_name,
+          r.amount::float AS refund_amount,
+          r.refund_date
+        FROM expense_refunds r
+        JOIN expenses e ON e.id=r.expense_id
+        LEFT JOIN categories c ON c.id=e.category_id
+        LEFT JOIN subcategories sc ON sc.id=e.subcategory_id
+        ${refundWhere}
+      ) activity
+      ORDER BY expense_date DESC, created_at DESC
     `, params);
 
     res.json(result.rows);
@@ -464,6 +511,44 @@ app.delete("/api/expenses/:id", requireAuth, async (req, res) => {
   }
 });
 
+
+app.post("/api/expenses/:id/refund", requireAuth, async (req, res) => {
+  const expenseId = Number(req.params.id);
+  const amount = Number(req.body?.amount);
+  const refundDate = String(req.body?.refundDate || "");
+
+  if (!Number.isFinite(amount) || amount <= 0) return sendError(res, 400, "Podaj poprawną kwotę zwrotu");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(refundDate)) return sendError(res, 400, "Podaj datę zwrotu");
+
+  try {
+    const expense = await pool.query("SELECT amount::float AS amount FROM expenses WHERE id=$1", [expenseId]);
+    if (!expense.rowCount) return sendError(res, 404, "Nie znaleziono wydatku");
+    if (amount > Number(expense.rows[0].amount)) return sendError(res, 400, "Kwota zwrotu nie może być większa niż wydatek");
+
+    await pool.query(`
+      INSERT INTO expense_refunds(expense_id, amount, refund_date)
+      VALUES($1,$2,$3)
+      ON CONFLICT(expense_id) DO UPDATE SET
+        amount=EXCLUDED.amount,
+        refund_date=EXCLUDED.refund_date
+    `, [expenseId, amount, refundDate]);
+
+    res.json({ ok: true });
+  } catch (error) {
+    console.error(error);
+    sendError(res, 500, "Nie udało się zapisać zwrotu");
+  }
+});
+
+app.delete("/api/expenses/:id/refund", requireAuth, async (req, res) => {
+  try {
+    await pool.query("DELETE FROM expense_refunds WHERE expense_id=$1", [req.params.id]);
+    res.json({ ok: true });
+  } catch (error) {
+    console.error(error);
+    sendError(res, 500, "Nie udało się usunąć zwrotu");
+  }
+});
 
 function isoDate(value) {
   return value ? String(value).slice(0, 10) : null;
@@ -606,9 +691,11 @@ app.post("/api/plans", requireAuth, async (req, res) => {
   if (!["one_time","monthly","yearly"].includes(recurrence)) return sendError(res, 400, "Nieprawidłowa cykliczność");
   if (endDate && !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) return sendError(res, 400, "Nieprawidłowa data końcowa");
   if (endDate && endDate < dueDate) return sendError(res, 400, "Data końcowa nie może być wcześniejsza niż pierwszy termin");
-  if (!(await validateCategoryPair(categoryId, subcategoryId))) return sendError(res, 400, "Wybierz poprawną kategorię i podkategorię");
-
   try {
+    if (!(await validateCategoryPair(categoryId, subcategoryId))) {
+      return sendError(res, 400, "Wybierz poprawną kategorię i podkategorię");
+    }
+
     const result = await pool.query(`
       INSERT INTO planned_rules(amount, category_id, subcategory_id, description, start_date, recurrence, end_date)
       VALUES($1,$2,$3,$4,$5,$6,$7)
@@ -801,38 +888,65 @@ app.get("/api/summary", requireAuth, async (req, res) => {
   if (!/^\d{4}-\d{2}$/.test(month)) return sendError(res, 400, "Nieprawidłowy miesiąc");
 
   try {
+    const dateParam = month + "-01";
+
     const totalResult = await pool.query(`
+      WITH activity AS (
+        SELECT amount::numeric AS amount, expense_date AS activity_date
+        FROM expenses
+        UNION ALL
+        SELECT -r.amount::numeric AS amount, r.refund_date AS activity_date
+        FROM expense_refunds r
+      )
       SELECT COALESCE(SUM(amount), 0)::float AS total
-      FROM expenses
-      WHERE expense_date >= $1::date
-        AND expense_date < ($1::date + INTERVAL '1 month')
-    `, [month + "-01"]);
+      FROM activity
+      WHERE activity_date >= $1::date
+        AND activity_date < ($1::date + INTERVAL '1 month')
+    `, [dateParam]);
 
     const categoriesResult = await pool.query(`
+      WITH activity AS (
+        SELECT e.amount::numeric AS amount, e.expense_date AS activity_date, e.category_id
+        FROM expenses e
+        UNION ALL
+        SELECT -r.amount::numeric AS amount, r.refund_date AS activity_date, e.category_id
+        FROM expense_refunds r
+        JOIN expenses e ON e.id=r.expense_id
+      )
       SELECT
         COALESCE(c.name, 'Bez kategorii') AS category_name,
-        SUM(e.amount)::float AS amount
-      FROM expenses e
-      LEFT JOIN categories c ON c.id = e.category_id
-      WHERE e.expense_date >= $1::date
-        AND e.expense_date < ($1::date + INTERVAL '1 month')
+        SUM(a.amount)::float AS amount
+      FROM activity a
+      LEFT JOIN categories c ON c.id=a.category_id
+      WHERE a.activity_date >= $1::date
+        AND a.activity_date < ($1::date + INTERVAL '1 month')
       GROUP BY c.id, c.name
+      HAVING SUM(a.amount) <> 0
       ORDER BY amount DESC
-    `, [month + "-01"]);
+    `, [dateParam]);
 
     const subcategoriesResult = await pool.query(`
+      WITH activity AS (
+        SELECT e.amount::numeric AS amount, e.expense_date AS activity_date, e.category_id, e.subcategory_id
+        FROM expenses e
+        UNION ALL
+        SELECT -r.amount::numeric AS amount, r.refund_date AS activity_date, e.category_id, e.subcategory_id
+        FROM expense_refunds r
+        JOIN expenses e ON e.id=r.expense_id
+      )
       SELECT
         COALESCE(c.name, 'Bez kategorii') AS category_name,
-        COALESCE(s.name, 'Bez podkategorii') AS subcategory_name,
-        SUM(e.amount)::float AS amount
-      FROM expenses e
-      LEFT JOIN categories c ON c.id = e.category_id
-      LEFT JOIN subcategories s ON s.id = e.subcategory_id
-      WHERE e.expense_date >= $1::date
-        AND e.expense_date < ($1::date + INTERVAL '1 month')
-      GROUP BY c.id, c.name, s.id, s.name
+        COALESCE(sc.name, 'Bez podkategorii') AS subcategory_name,
+        SUM(a.amount)::float AS amount
+      FROM activity a
+      LEFT JOIN categories c ON c.id=a.category_id
+      LEFT JOIN subcategories sc ON sc.id=a.subcategory_id
+      WHERE a.activity_date >= $1::date
+        AND a.activity_date < ($1::date + INTERVAL '1 month')
+      GROUP BY c.id, c.name, sc.id, sc.name
+      HAVING SUM(a.amount) <> 0
       ORDER BY c.name ASC, amount DESC
-    `, [month + "-01"]);
+    `, [dateParam]);
 
     res.json({
       total: totalResult.rows[0].total,
@@ -847,10 +961,11 @@ app.get("/api/summary", requireAuth, async (req, res) => {
 
 app.get("/api/export", requireAuth, async (req, res) => {
   try {
-    const [categories, subcategories, expenses, plannedRules, plannedOverrides, plannedPayments] = await Promise.all([
+    const [categories, subcategories, expenses, refunds, plannedRules, plannedOverrides, plannedPayments] = await Promise.all([
       pool.query("SELECT * FROM categories ORDER BY id"),
       pool.query("SELECT * FROM subcategories ORDER BY id"),
       pool.query("SELECT * FROM expenses ORDER BY id"),
+      pool.query("SELECT * FROM expense_refunds ORDER BY id"),
       pool.query("SELECT * FROM planned_rules ORDER BY id"),
       pool.query("SELECT * FROM planned_overrides ORDER BY id"),
       pool.query("SELECT * FROM planned_payments ORDER BY id"),
@@ -862,6 +977,7 @@ app.get("/api/export", requireAuth, async (req, res) => {
       categories: categories.rows,
       subcategories: subcategories.rows,
       expenses: expenses.rows,
+      refunds: refunds.rows,
       plannedRules: plannedRules.rows,
       plannedOverrides: plannedOverrides.rows,
       plannedPayments: plannedPayments.rows,
