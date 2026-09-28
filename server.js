@@ -94,6 +94,45 @@ async function initDb() {
 
     CREATE INDEX IF NOT EXISTS idx_trusted_devices_expires_at
       ON trusted_devices(expires_at);
+
+    CREATE TABLE IF NOT EXISTS planned_rules (
+      id SERIAL PRIMARY KEY,
+      amount NUMERIC(12,2) NOT NULL CHECK (amount > 0),
+      category_id INTEGER REFERENCES categories(id),
+      subcategory_id INTEGER REFERENCES subcategories(id),
+      description VARCHAR(300),
+      start_date DATE NOT NULL,
+      recurrence VARCHAR(20) NOT NULL DEFAULT 'one_time'
+        CHECK (recurrence IN ('one_time','monthly','yearly')),
+      end_date DATE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS planned_overrides (
+      id SERIAL PRIMARY KEY,
+      rule_id INTEGER NOT NULL REFERENCES planned_rules(id) ON DELETE CASCADE,
+      occurrence_date DATE NOT NULL,
+      amount NUMERIC(12,2) CHECK (amount > 0),
+      category_id INTEGER REFERENCES categories(id),
+      subcategory_id INTEGER REFERENCES subcategories(id),
+      description VARCHAR(300),
+      due_date DATE,
+      skipped BOOLEAN NOT NULL DEFAULT FALSE,
+      UNIQUE(rule_id, occurrence_date)
+    );
+
+    CREATE TABLE IF NOT EXISTS planned_payments (
+      id SERIAL PRIMARY KEY,
+      rule_id INTEGER NOT NULL REFERENCES planned_rules(id) ON DELETE CASCADE,
+      occurrence_date DATE NOT NULL,
+      expense_id INTEGER REFERENCES expenses(id) ON DELETE SET NULL,
+      paid_at DATE NOT NULL,
+      UNIQUE(rule_id, occurrence_date)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_planned_rules_start_date ON planned_rules(start_date);
+    CREATE INDEX IF NOT EXISTS idx_planned_overrides_occurrence ON planned_overrides(occurrence_date);
+    CREATE INDEX IF NOT EXISTS idx_planned_payments_occurrence ON planned_payments(occurrence_date);
   `);
 }
 
@@ -417,6 +456,326 @@ app.delete("/api/expenses/:id", requireAuth, async (req, res) => {
   }
 });
 
+
+function isoDate(value) {
+  return value ? String(value).slice(0, 10) : null;
+}
+
+function daysInMonth(year, month) {
+  return new Date(Date.UTC(year, month, 0)).getUTCDate();
+}
+
+function occurrenceForMonth(rule, month) {
+  const [year, mon] = month.split("-").map(Number);
+  const start = isoDate(rule.start_date);
+  const end = isoDate(rule.end_date);
+  const [sy, sm, sd] = start.split("-").map(Number);
+  const monthStart = `${month}-01`;
+  const monthEnd = `${month}-${String(daysInMonth(year, mon)).padStart(2, "0")}`;
+
+  if (start > monthEnd || (end && end < monthStart)) return null;
+
+  if (rule.recurrence === "one_time") {
+    return start.slice(0, 7) === month ? start : null;
+  }
+
+  if (rule.recurrence === "yearly" && sm !== mon) return null;
+
+  if (rule.recurrence === "monthly" || rule.recurrence === "yearly") {
+    const day = Math.min(sd, daysInMonth(year, mon));
+    const candidate = `${year}-${String(mon).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    if (candidate < start || (end && candidate > end)) return null;
+    return candidate;
+  }
+
+  return null;
+}
+
+async function validateCategoryPair(categoryId, subcategoryId) {
+  if (!Number.isInteger(categoryId)) return false;
+  if (!subcategoryId) return true;
+  const result = await pool.query(
+    "SELECT 1 FROM subcategories WHERE id=$1 AND category_id=$2",
+    [subcategoryId, categoryId]
+  );
+  return Boolean(result.rowCount);
+}
+
+async function resolvePlannedOccurrence(ruleId, occurrenceDate) {
+  const ruleResult = await pool.query(`
+    SELECT pr.*, c.name AS category_name, s.name AS subcategory_name
+    FROM planned_rules pr
+    LEFT JOIN categories c ON c.id=pr.category_id
+    LEFT JOIN subcategories s ON s.id=pr.subcategory_id
+    WHERE pr.id=$1
+  `, [ruleId]);
+  if (!ruleResult.rowCount) return null;
+  const rule = ruleResult.rows[0];
+
+  const overrideResult = await pool.query(`
+    SELECT po.*, c.name AS override_category_name, s.name AS override_subcategory_name
+    FROM planned_overrides po
+    LEFT JOIN categories c ON c.id=po.category_id
+    LEFT JOIN subcategories s ON s.id=po.subcategory_id
+    WHERE po.rule_id=$1 AND po.occurrence_date=$2
+  `, [ruleId, occurrenceDate]);
+  const o = overrideResult.rows[0];
+
+  if (o?.skipped) return null;
+
+  return {
+    rule_id: rule.id,
+    occurrence_date: occurrenceDate,
+    amount: Number(o?.amount ?? rule.amount),
+    category_id: o?.category_id ?? rule.category_id,
+    subcategory_id: o?.subcategory_id ?? rule.subcategory_id,
+    category_name: o?.override_category_name ?? rule.category_name,
+    subcategory_name: o?.override_subcategory_name ?? rule.subcategory_name,
+    description: o?.description ?? rule.description,
+    due_date: isoDate(o?.due_date) || occurrenceDate,
+    recurrence: rule.recurrence,
+    end_date: isoDate(rule.end_date),
+    start_date: isoDate(rule.start_date),
+  };
+}
+
+app.get("/api/plans", requireAuth, async (req, res) => {
+  const month = String(req.query.month || "");
+  if (!/^\d{4}-\d{2}$/.test(month)) return sendError(res, 400, "Nieprawidłowy miesiąc");
+
+  try {
+    const rulesResult = await pool.query(`
+      SELECT pr.*, c.name AS category_name, s.name AS subcategory_name
+      FROM planned_rules pr
+      LEFT JOIN categories c ON c.id=pr.category_id
+      LEFT JOIN subcategories s ON s.id=pr.subcategory_id
+      ORDER BY pr.start_date, pr.id
+    `);
+
+    const items = [];
+    for (const rule of rulesResult.rows) {
+      const occurrenceDate = occurrenceForMonth(rule, month);
+      if (!occurrenceDate) continue;
+
+      const effective = await resolvePlannedOccurrence(rule.id, occurrenceDate);
+      if (!effective) continue;
+
+      const paidResult = await pool.query(
+        "SELECT paid_at, expense_id FROM planned_payments WHERE rule_id=$1 AND occurrence_date=$2",
+        [rule.id, occurrenceDate]
+      );
+
+      items.push({
+        ...effective,
+        paid: Boolean(paidResult.rowCount),
+        paid_at: paidResult.rowCount ? isoDate(paidResult.rows[0].paid_at) : null,
+        expense_id: paidResult.rowCount ? paidResult.rows[0].expense_id : null,
+      });
+    }
+
+    items.sort((a,b) => a.due_date.localeCompare(b.due_date) || a.rule_id - b.rule_id);
+    res.json(items);
+  } catch (error) {
+    console.error(error);
+    sendError(res, 500, "Nie udało się pobrać planu");
+  }
+});
+
+app.post("/api/plans", requireAuth, async (req, res) => {
+  const amount = Number(req.body?.amount);
+  const categoryId = Number(req.body?.categoryId);
+  const subcategoryId = req.body?.subcategoryId ? Number(req.body.subcategoryId) : null;
+  const description = String(req.body?.description || "").trim() || null;
+  const dueDate = String(req.body?.dueDate || "");
+  const recurrence = String(req.body?.recurrence || "one_time");
+  const endDate = req.body?.endDate ? String(req.body.endDate) : null;
+
+  if (!Number.isFinite(amount) || amount <= 0) return sendError(res, 400, "Podaj poprawną kwotę");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) return sendError(res, 400, "Podaj termin płatności");
+  if (!["one_time","monthly","yearly"].includes(recurrence)) return sendError(res, 400, "Nieprawidłowa cykliczność");
+  if (endDate && !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) return sendError(res, 400, "Nieprawidłowa data końcowa");
+  if (endDate && endDate < dueDate) return sendError(res, 400, "Data końcowa nie może być wcześniejsza niż pierwszy termin");
+  if (!(await validateCategoryPair(categoryId, subcategoryId))) return sendError(res, 400, "Wybierz poprawną kategorię i podkategorię");
+
+  try {
+    const result = await pool.query(`
+      INSERT INTO planned_rules(amount, category_id, subcategory_id, description, start_date, recurrence, end_date)
+      VALUES($1,$2,$3,$4,$5,$6,$7)
+      RETURNING id
+    `, [amount, categoryId, subcategoryId, description, dueDate, recurrence, recurrence === "one_time" ? dueDate : endDate]);
+    res.status(201).json({ id: result.rows[0].id });
+  } catch (error) {
+    console.error(error);
+    sendError(res, 500, "Nie udało się zapisać planowanego wydatku");
+  }
+});
+
+app.patch("/api/plans/:id", requireAuth, async (req, res) => {
+  const ruleId = Number(req.params.id);
+  const occurrenceDate = String(req.body?.occurrenceDate || "");
+  const scope = String(req.body?.scope || "current");
+  const amount = Number(req.body?.amount);
+  const categoryId = Number(req.body?.categoryId);
+  const subcategoryId = req.body?.subcategoryId ? Number(req.body.subcategoryId) : null;
+  const description = String(req.body?.description || "").trim() || null;
+  const dueDate = String(req.body?.dueDate || "");
+  const recurrence = String(req.body?.recurrence || "one_time");
+  const endDate = req.body?.endDate ? String(req.body.endDate) : null;
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(occurrenceDate) || !/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) return sendError(res, 400, "Nieprawidłowa data");
+  if (!["current","future"].includes(scope)) return sendError(res, 400, "Nieprawidłowy zakres zmiany");
+  if (!Number.isFinite(amount) || amount <= 0) return sendError(res, 400, "Podaj poprawną kwotę");
+  if (!["one_time","monthly","yearly"].includes(recurrence)) return sendError(res, 400, "Nieprawidłowa cykliczność");
+  if (!(await validateCategoryPair(categoryId, subcategoryId))) return sendError(res, 400, "Wybierz poprawną kategorię i podkategorię");
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const ruleResult = await client.query("SELECT * FROM planned_rules WHERE id=$1 FOR UPDATE", [ruleId]);
+    if (!ruleResult.rowCount) {
+      await client.query("ROLLBACK");
+      return sendError(res, 404, "Nie znaleziono planowanego wydatku");
+    }
+    const rule = ruleResult.rows[0];
+
+    if (scope === "current") {
+      await client.query(`
+        INSERT INTO planned_overrides(rule_id, occurrence_date, amount, category_id, subcategory_id, description, due_date, skipped)
+        VALUES($1,$2,$3,$4,$5,$6,$7,FALSE)
+        ON CONFLICT(rule_id, occurrence_date) DO UPDATE SET
+          amount=EXCLUDED.amount,
+          category_id=EXCLUDED.category_id,
+          subcategory_id=EXCLUDED.subcategory_id,
+          description=EXCLUDED.description,
+          due_date=EXCLUDED.due_date,
+          skipped=FALSE
+      `, [ruleId, occurrenceDate, amount, categoryId, subcategoryId, description, dueDate]);
+    } else {
+      const startDate = isoDate(rule.start_date);
+      if (startDate === occurrenceDate) {
+        await client.query(`
+          UPDATE planned_rules
+          SET amount=$1, category_id=$2, subcategory_id=$3, description=$4,
+              start_date=$5, recurrence=$6, end_date=$7
+          WHERE id=$8
+        `, [amount, categoryId, subcategoryId, description, dueDate, recurrence, recurrence === "one_time" ? dueDate : endDate, ruleId]);
+      } else {
+        await client.query(
+          "UPDATE planned_rules SET end_date=($1::date - INTERVAL '1 day')::date WHERE id=$2",
+          [occurrenceDate, ruleId]
+        );
+        await client.query(`
+          INSERT INTO planned_rules(amount, category_id, subcategory_id, description, start_date, recurrence, end_date)
+          VALUES($1,$2,$3,$4,$5,$6,$7)
+        `, [amount, categoryId, subcategoryId, description, dueDate, recurrence, recurrence === "one_time" ? dueDate : endDate]);
+      }
+    }
+
+    await client.query("COMMIT");
+    res.json({ ok: true });
+  } catch (error) {
+    await client.query("ROLLBACK");
+    console.error(error);
+    sendError(res, 500, "Nie udało się zmienić planowanego wydatku");
+  } finally {
+    client.release();
+  }
+});
+
+app.delete("/api/plans/:id", requireAuth, async (req, res) => {
+  const ruleId = Number(req.params.id);
+  const occurrenceDate = String(req.body?.occurrenceDate || "");
+  const scope = String(req.body?.scope || "current");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(occurrenceDate)) return sendError(res, 400, "Nieprawidłowa data");
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const ruleResult = await client.query("SELECT * FROM planned_rules WHERE id=$1 FOR UPDATE", [ruleId]);
+    if (!ruleResult.rowCount) {
+      await client.query("ROLLBACK");
+      return sendError(res, 404, "Nie znaleziono planowanego wydatku");
+    }
+    const rule = ruleResult.rows[0];
+
+    if (scope === "future") {
+      if (isoDate(rule.start_date) === occurrenceDate) {
+        await client.query("DELETE FROM planned_rules WHERE id=$1", [ruleId]);
+      } else {
+        await client.query(
+          "UPDATE planned_rules SET end_date=($1::date - INTERVAL '1 day')::date WHERE id=$2",
+          [occurrenceDate, ruleId]
+        );
+      }
+    } else {
+      await client.query(`
+        INSERT INTO planned_overrides(rule_id, occurrence_date, skipped)
+        VALUES($1,$2,TRUE)
+        ON CONFLICT(rule_id, occurrence_date) DO UPDATE SET skipped=TRUE
+      `, [ruleId, occurrenceDate]);
+    }
+
+    await client.query("COMMIT");
+    res.json({ ok: true });
+  } catch (error) {
+    await client.query("ROLLBACK");
+    console.error(error);
+    sendError(res, 500, "Nie udało się usunąć planowanego wydatku");
+  } finally {
+    client.release();
+  }
+});
+
+app.post("/api/plans/:id/pay", requireAuth, async (req, res) => {
+  const ruleId = Number(req.params.id);
+  const occurrenceDate = String(req.body?.occurrenceDate || "");
+  const amount = Number(req.body?.amount);
+  const paidDate = String(req.body?.paidDate || "");
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(occurrenceDate) || !/^\d{4}-\d{2}-\d{2}$/.test(paidDate)) return sendError(res, 400, "Nieprawidłowa data");
+  if (!Number.isFinite(amount) || amount <= 0) return sendError(res, 400, "Podaj poprawną kwotę");
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    const already = await client.query(
+      "SELECT 1 FROM planned_payments WHERE rule_id=$1 AND occurrence_date=$2",
+      [ruleId, occurrenceDate]
+    );
+    if (already.rowCount) {
+      await client.query("ROLLBACK");
+      return sendError(res, 409, "Ten wydatek jest już oznaczony jako zapłacony");
+    }
+
+    const effective = await resolvePlannedOccurrence(ruleId, occurrenceDate);
+    if (!effective) {
+      await client.query("ROLLBACK");
+      return sendError(res, 404, "Nie znaleziono planowanego wydatku");
+    }
+
+    const expenseResult = await client.query(`
+      INSERT INTO expenses(amount, category_id, subcategory_id, description, expense_date)
+      VALUES($1,$2,$3,$4,$5)
+      RETURNING id
+    `, [amount, effective.category_id, effective.subcategory_id, effective.description, paidDate]);
+
+    await client.query(`
+      INSERT INTO planned_payments(rule_id, occurrence_date, expense_id, paid_at)
+      VALUES($1,$2,$3,$4)
+    `, [ruleId, occurrenceDate, expenseResult.rows[0].id, paidDate]);
+
+    await client.query("COMMIT");
+    res.json({ ok: true, expenseId: expenseResult.rows[0].id });
+  } catch (error) {
+    await client.query("ROLLBACK");
+    console.error(error);
+    sendError(res, 500, "Nie udało się oznaczyć wydatku jako zapłaconego");
+  } finally {
+    client.release();
+  }
+});
+
 app.get("/api/summary", requireAuth, async (req, res) => {
   const month = String(req.query.month || "");
   if (!/^\d{4}-\d{2}$/.test(month)) return sendError(res, 400, "Nieprawidłowy miesiąc");
@@ -468,10 +827,13 @@ app.get("/api/summary", requireAuth, async (req, res) => {
 
 app.get("/api/export", requireAuth, async (req, res) => {
   try {
-    const [categories, subcategories, expenses] = await Promise.all([
+    const [categories, subcategories, expenses, plannedRules, plannedOverrides, plannedPayments] = await Promise.all([
       pool.query("SELECT * FROM categories ORDER BY id"),
       pool.query("SELECT * FROM subcategories ORDER BY id"),
       pool.query("SELECT * FROM expenses ORDER BY id"),
+      pool.query("SELECT * FROM planned_rules ORDER BY id"),
+      pool.query("SELECT * FROM planned_overrides ORDER BY id"),
+      pool.query("SELECT * FROM planned_payments ORDER BY id"),
     ]);
 
     res.setHeader("Content-Disposition", 'attachment; filename="finanse-backup.json"');
@@ -480,6 +842,9 @@ app.get("/api/export", requireAuth, async (req, res) => {
       categories: categories.rows,
       subcategories: subcategories.rows,
       expenses: expenses.rows,
+      plannedRules: plannedRules.rows,
+      plannedOverrides: plannedOverrides.rows,
+      plannedPayments: plannedPayments.rows,
     });
   } catch (error) {
     console.error(error);
