@@ -76,6 +76,37 @@
       </div>
     </section>
 
+    <section id="planTab" class="tab-panel">
+      <div class="month-switcher">
+        <button id="prevPlanMonth" class="icon-btn" type="button" aria-label="Poprzedni miesiąc">‹</button>
+        <div>
+          <p class="eyebrow">Plan wydatków</p>
+          <h2 id="planMonthTitle"></h2>
+        </div>
+        <button id="nextPlanMonth" class="icon-btn" type="button" aria-label="Następny miesiąc">›</button>
+      </div>
+
+      <div class="plan-hero">
+        <p class="plan-hero-title">Planowane wydatki</p>
+        <div class="plan-stats">
+          <div><span>Planowane</span><strong id="planTotal">0,00 zł</strong></div>
+          <div><span>Zapłacone</span><strong id="planPaid">0,00 zł</strong></div>
+          <div><span>Pozostało</span><strong id="planRemaining">0,00 zł</strong></div>
+        </div>
+        <div class="plan-forecast">
+          <span>Prognoza miesiąca</span>
+          <strong id="planForecast">0,00 zł</strong>
+        </div>
+      </div>
+
+      <div class="summary-view-switch" role="tablist" aria-label="Widok planu">
+        <button class="summary-view-btn active" type="button" data-plan-view="unpaid">Do zapłaty</button>
+        <button class="summary-view-btn" type="button" data-plan-view="all">Wszystkie</button>
+      </div>
+
+      <div id="planList" class="plan-list"></div>
+    </section>
+
     <section id="settingsTab" class="tab-panel">
       <div class="section-head settings-head">
         <div>
@@ -98,6 +129,7 @@
     <nav class="bottom-nav" aria-label="Nawigacja">
       <button class="nav-btn active" data-tab="expenses" type="button"><span>⌂</span>Wydatki</button>
       <button class="nav-btn" data-tab="summary" type="button"><span>◔</span>Podsumowanie</button>
+      <button class="nav-btn" data-tab="plan" type="button"><span>✓</span>Plan</button>
       <button class="nav-btn" data-tab="settings" type="button"><span>⚙</span>Ustawienia</button>
     </nav>
   </div>
@@ -140,6 +172,94 @@
       <p id="expenseError" class="form-error"></p>
       <button class="primary-btn" type="submit">Zapisz wydatek</button>
       <button id="deleteExpenseBtn" class="danger-btn hidden" type="button">Usuń wydatek</button>
+    </form>
+  </dialog>
+
+  <dialog id="planDialog" class="sheet-dialog">
+    <form id="planForm" method="dialog" class="sheet plan-sheet">
+      <div class="sheet-handle"></div>
+      <div class="sheet-head">
+        <h2 id="planDialogTitle">Nowy planowany wydatek</h2>
+        <button class="icon-btn" type="button" data-close="planDialog">×</button>
+      </div>
+
+      <label>Kwota
+        <div class="amount-field">
+          <input id="planAmountInput" type="number" min="0.01" step="0.01" inputmode="decimal" placeholder="0,00" required>
+          <span>zł</span>
+        </div>
+      </label>
+
+      <div class="choice-field">
+        <span class="choice-label">Kategoria</span>
+        <div id="planCategoryButtons" class="choice-scroll" role="group" aria-label="Wybierz kategorię"></div>
+        <input id="planCategorySelect" type="hidden" required>
+      </div>
+
+      <div id="planSubcategoryField" class="choice-field hidden">
+        <span class="choice-label">Podkategoria</span>
+        <div id="planSubcategoryButtons" class="choice-scroll" role="group" aria-label="Wybierz podkategorię"></div>
+        <input id="planSubcategorySelect" type="hidden">
+      </div>
+
+      <label>Opis
+        <input id="planDescriptionInput" type="text" maxlength="300" placeholder="np. rata, dentysta, ubezpieczenie">
+      </label>
+
+      <label>Termin płatności
+        <input id="planDueDateInput" type="date" required>
+      </label>
+
+      <div class="choice-field">
+        <span class="choice-label">Powtarzanie</span>
+        <div class="choice-scroll">
+          <button class="choice-btn active" type="button" data-recurrence="one_time">Jednorazowy</button>
+          <button class="choice-btn" type="button" data-recurrence="monthly">Co miesiąc</button>
+          <button class="choice-btn" type="button" data-recurrence="yearly">Co rok</button>
+        </div>
+        <input id="planRecurrenceInput" type="hidden" value="one_time">
+      </div>
+
+      <label id="planEndDateField" class="hidden">Powtarzaj do <span class="muted">(opcjonalnie)</span>
+        <input id="planEndDateInput" type="date">
+      </label>
+
+      <div id="planScopeField" class="choice-field hidden">
+        <span class="choice-label">Zakres zmiany</span>
+        <div class="choice-scroll">
+          <button class="choice-btn active" type="button" data-plan-scope="current">Tylko ten miesiąc</button>
+          <button class="choice-btn" type="button" data-plan-scope="future">Ten i kolejne</button>
+        </div>
+        <input id="planScopeInput" type="hidden" value="current">
+      </div>
+
+      <p id="planError" class="form-error"></p>
+      <button class="primary-btn" type="submit">Zapisz</button>
+      <button id="deletePlanBtn" class="danger-btn hidden" type="button">Usuń z planu</button>
+    </form>
+  </dialog>
+
+  <dialog id="payPlanDialog" class="sheet-dialog">
+    <form id="payPlanForm" method="dialog" class="sheet">
+      <div class="sheet-handle"></div>
+      <div class="sheet-head">
+        <h2>Oznacz jako zapłacone</h2>
+        <button class="icon-btn" type="button" data-close="payPlanDialog">×</button>
+      </div>
+
+      <label>Faktyczna kwota
+        <div class="amount-field">
+          <input id="payPlanAmountInput" type="number" min="0.01" step="0.01" inputmode="decimal" required>
+          <span>zł</span>
+        </div>
+      </label>
+
+      <label>Data płatności
+        <input id="payPlanDateInput" type="date" required>
+      </label>
+
+      <p id="payPlanError" class="form-error"></p>
+      <button class="primary-btn" type="submit">Zapłacone</button>
     </form>
   </dialog>
 
