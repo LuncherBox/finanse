@@ -63,6 +63,7 @@ async function initDb() {
       name VARCHAR(100) NOT NULL UNIQUE,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
+    ALTER TABLE categories ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE;
 
     CREATE TABLE IF NOT EXISTS subcategories (
       id SERIAL PRIMARY KEY,
@@ -71,6 +72,7 @@ async function initDb() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       UNIQUE(category_id, name)
     );
+    ALTER TABLE subcategories ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE;
 
     CREATE TABLE IF NOT EXISTS expenses (
       id SERIAL PRIMARY KEY,
@@ -226,7 +228,8 @@ app.get("/api/categories", requireAuth, async (req, res) => {
           '[]'::json
         ) AS subcategories
       FROM categories c
-      LEFT JOIN subcategories s ON s.category_id = c.id
+      LEFT JOIN subcategories s ON s.category_id = c.id AND s.is_active=TRUE
+      WHERE c.is_active=TRUE
       GROUP BY c.id
       ORDER BY c.name
     `);
@@ -243,7 +246,7 @@ app.post("/api/categories", requireAuth, async (req, res) => {
 
   try {
     const result = await pool.query(
-      "INSERT INTO categories(name) VALUES($1) RETURNING *",
+      "INSERT INTO categories(name) VALUES($1) ON CONFLICT(name) DO UPDATE SET is_active=TRUE RETURNING *",
       [name]
     );
     res.status(201).json({ ...result.rows[0], subcategories: [] });
@@ -273,25 +276,26 @@ app.patch("/api/categories/:id", requireAuth, async (req, res) => {
 });
 
 app.delete("/api/categories/:id", requireAuth, async (req, res) => {
+  const client = await pool.connect();
   try {
-    const used = await pool.query(
-      "SELECT 1 FROM expenses WHERE category_id=$1 LIMIT 1",
+    await client.query("BEGIN");
+    const result = await client.query(
+      "UPDATE categories SET is_active=FALSE WHERE id=$1 RETURNING id",
       [req.params.id]
     );
-    const plannedUsed = await pool.query(
-      "SELECT 1 FROM planned_rules WHERE category_id=$1 LIMIT 1",
-      [req.params.id]
-    );
-    if (used.rowCount || plannedUsed.rowCount) {
-      return sendError(res, 409, "Kategoria jest używana w wydatkach lub planie. Najpierw zmień przypisane pozycje.");
+    if (!result.rowCount) {
+      await client.query("ROLLBACK");
+      return sendError(res, 404, "Nie znaleziono kategorii");
     }
-
-    const result = await pool.query("DELETE FROM categories WHERE id=$1", [req.params.id]);
-    if (!result.rowCount) return sendError(res, 404, "Nie znaleziono kategorii");
+    await client.query("UPDATE subcategories SET is_active=FALSE WHERE category_id=$1", [req.params.id]);
+    await client.query("COMMIT");
     res.json({ ok: true });
   } catch (error) {
+    await client.query("ROLLBACK");
     console.error(error);
     sendError(res, 500, "Nie udało się usunąć kategorii");
+  } finally {
+    client.release();
   }
 });
 
@@ -301,7 +305,7 @@ app.post("/api/categories/:categoryId/subcategories", requireAuth, async (req, r
 
   try {
     const result = await pool.query(
-      "INSERT INTO subcategories(category_id, name) VALUES($1, $2) RETURNING *",
+      "INSERT INTO subcategories(category_id, name) VALUES($1, $2) ON CONFLICT(category_id, name) DO UPDATE SET is_active=TRUE RETURNING *",
       [req.params.categoryId, name]
     );
     res.status(201).json(result.rows[0]);
@@ -333,19 +337,10 @@ app.patch("/api/subcategories/:id", requireAuth, async (req, res) => {
 
 app.delete("/api/subcategories/:id", requireAuth, async (req, res) => {
   try {
-    const used = await pool.query(
-      "SELECT 1 FROM expenses WHERE subcategory_id=$1 LIMIT 1",
+    const result = await pool.query(
+      "UPDATE subcategories SET is_active=FALSE WHERE id=$1 RETURNING id",
       [req.params.id]
     );
-    const plannedUsed = await pool.query(
-      "SELECT 1 FROM planned_rules WHERE subcategory_id=$1 LIMIT 1",
-      [req.params.id]
-    );
-    if (used.rowCount || plannedUsed.rowCount) {
-      return sendError(res, 409, "Podkategoria jest używana w wydatkach lub planie. Najpierw zmień przypisane pozycje.");
-    }
-
-    const result = await pool.query("DELETE FROM subcategories WHERE id=$1", [req.params.id]);
     if (!result.rowCount) return sendError(res, 404, "Nie znaleziono podkategorii");
     res.json({ ok: true });
   } catch (error) {
