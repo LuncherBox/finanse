@@ -4,6 +4,12 @@ const state = {
   month: currentMonth(),
   summaryMonth: currentMonth(),
   summaryExpenses: [],
+  planMonth: currentMonth(),
+  plans: [],
+  planView: "unpaid",
+  activeTab: "expenses",
+  editingPlan: null,
+  payingPlan: null,
   editingExpenseId: null,
   editingCategoryId: null,
   editingSubcategoryId: null,
@@ -15,6 +21,8 @@ const appView = $("appView");
 const expenseDialog = $("expenseDialog");
 const categoryDialog = $("categoryDialog");
 const subcategoryDialog = $("subcategoryDialog");
+const planDialog = $("planDialog");
+const payPlanDialog = $("payPlanDialog");
 
 function currentMonth() {
   const d = new Date();
@@ -85,7 +93,7 @@ function showLogin() {
 async function showApp() {
   loginView.classList.add("hidden");
   appView.classList.remove("hidden");
-  await Promise.all([loadCategories(), loadExpenses(), loadSummary()]);
+  await Promise.all([loadCategories(), loadExpenses(), loadSummary(), loadPlan()]);
 }
 
 $("loginForm").addEventListener("submit", async (event) => {
@@ -111,6 +119,7 @@ async function loadCategories() {
   state.categories = await api("/api/categories");
   renderCategories();
   if (document.body.contains($("categoryButtons"))) fillCategorySelect($("categorySelect").value || "");
+  if (document.body.contains($("planCategoryButtons"))) fillPlanCategorySelect($("planCategorySelect").value || "");
 }
 
 async function loadExpenses() {
@@ -131,6 +140,105 @@ async function loadSummary() {
   $("summaryTotal").textContent = money(summary.total);
   renderSummary(summary);
   renderSummaryExpenses();
+}
+
+async function loadPlan() {
+  const [plans, monthExpenses] = await Promise.all([
+    api(`/api/plans?month=${state.planMonth}`),
+    api(`/api/expenses?month=${state.planMonth}`)
+  ]);
+
+  state.plans = plans;
+  $("planMonthTitle").textContent = monthLabel(state.planMonth);
+
+  const planned = plans.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+  const paid = plans.filter((item) => item.paid).reduce((sum, item) => sum + Number(item.paid_amount ?? item.amount ?? 0), 0);
+  const remaining = plans.filter((item) => !item.paid).reduce((sum, item) => sum + Number(item.amount || 0), 0);
+  const actual = monthExpenses.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+
+  $("planTotal").textContent = money(planned);
+  $("planPaid").textContent = money(paid);
+  $("planRemaining").textContent = money(remaining);
+  $("planForecast").textContent = money(actual + remaining);
+
+  renderPlan();
+}
+
+function renderPlan() {
+  const target = $("planList");
+  if (!target) return;
+
+  const visible = state.planView === "unpaid"
+    ? state.plans.filter((item) => !item.paid)
+    : state.plans;
+
+  if (!visible.length) {
+    target.innerHTML = '<div class="empty">Brak planowanych wydatków w tym widoku.</div>';
+    return;
+  }
+
+  const today = todayISO();
+
+  target.innerHTML = visible.map((item) => {
+    const overdue = !item.paid && item.due_date < today;
+    const recurrenceLabel = item.recurrence === "monthly"
+      ? "Co miesiąc"
+      : item.recurrence === "yearly"
+        ? "Co rok"
+        : "";
+    const status = item.paid
+      ? '<span class="plan-status paid">Zapłacone</span>'
+      : overdue
+        ? '<span class="plan-status overdue">Po terminie</span>'
+        : '<span class="plan-status due">Do zapłaty</span>';
+
+    return `
+      <article class="plan-card ${item.paid ? "is-paid" : ""}">
+        <button class="plan-card-main" type="button" data-edit-plan="${item.rule_id}" data-occurrence="${item.occurrence_date}">
+          <span class="plan-card-copy">
+            <span class="plan-card-title">${escapeHtml(item.description || item.subcategory_name || item.category_name || "Planowany wydatek")}</span>
+            <span class="plan-card-category">
+              ${escapeHtml(item.category_name || "Bez kategorii")}
+              ${item.subcategory_name ? " › " + escapeHtml(item.subcategory_name) : ""}
+            </span>
+            <span class="plan-card-meta">
+              ${dateLabel(item.due_date)}
+              ${recurrenceLabel ? " · " + recurrenceLabel : ""}
+            </span>
+          </span>
+          <span class="plan-card-side">
+            ${status}
+            <strong>${money(item.paid_amount ?? item.amount)}</strong>
+          </span>
+        </button>
+        ${item.paid ? "" : `
+          <button class="plan-paid-btn" type="button" data-pay-plan="${item.rule_id}" data-pay-occurrence="${item.occurrence_date}">
+            ✓ Zapłacone
+          </button>
+        `}
+      </article>
+    `;
+  }).join("");
+
+  target.querySelectorAll("[data-edit-plan]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const item = state.plans.find(
+        (row) => row.rule_id === Number(button.dataset.editPlan) &&
+          row.occurrence_date === button.dataset.occurrence
+      );
+      if (item) openPlan(item);
+    });
+  });
+
+  target.querySelectorAll("[data-pay-plan]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const item = state.plans.find(
+        (row) => row.rule_id === Number(button.dataset.payPlan) &&
+          row.occurrence_date === button.dataset.payOccurrence
+      );
+      if (item) openPayPlan(item);
+    });
+  });
 }
 
 function renderExpenses() {
@@ -258,6 +366,126 @@ function renderSummaryExpenses() {
   target.querySelectorAll("[data-summary-expense-id]").forEach((button) => {
     button.addEventListener("click", () => openExpense(Number(button.dataset.summaryExpenseId)));
   });
+}
+
+
+function fillPlanCategorySelect(selectedId = "") {
+  const target = $("planCategoryButtons");
+  $("planCategorySelect").value = selectedId || "";
+
+  target.innerHTML = state.categories.map((category) => {
+    const active = String(category.id) === String(selectedId);
+    return `
+      <button type="button" class="choice-btn ${active ? "active" : ""}" data-plan-category="${category.id}">
+        ${escapeHtml(category.name)}
+      </button>
+    `;
+  }).join("");
+
+  target.querySelectorAll("[data-plan-category]").forEach((button) => {
+    button.addEventListener("click", () => {
+      $("planCategorySelect").value = button.dataset.planCategory;
+      target.querySelectorAll(".choice-btn").forEach((item) => item.classList.remove("active"));
+      button.classList.add("active");
+      fillPlanSubcategorySelect("", button.dataset.planCategory);
+    });
+  });
+
+  fillPlanSubcategorySelect("", selectedId);
+}
+
+function fillPlanSubcategorySelect(selectedId = "", categoryIdOverride = null) {
+  const categoryId = Number(categoryIdOverride || $("planCategorySelect").value);
+  const category = state.categories.find((item) => item.id === categoryId);
+  const subs = category?.subcategories || [];
+  const field = $("planSubcategoryField");
+  const target = $("planSubcategoryButtons");
+
+  $("planSubcategorySelect").value = selectedId || "";
+
+  if (!categoryId || !subs.length) {
+    field.classList.add("hidden");
+    target.innerHTML = "";
+    $("planSubcategorySelect").value = "";
+    return;
+  }
+
+  field.classList.remove("hidden");
+  target.innerHTML = `
+    <button type="button" class="choice-btn ${!selectedId ? "active" : ""}" data-plan-subcategory="">Bez podkategorii</button>
+    ${subs.map((sub) => `
+      <button type="button" class="choice-btn ${String(sub.id) === String(selectedId) ? "active" : ""}" data-plan-subcategory="${sub.id}">
+        ${escapeHtml(sub.name)}
+      </button>
+    `).join("")}
+  `;
+
+  target.querySelectorAll("[data-plan-subcategory]").forEach((button) => {
+    button.addEventListener("click", () => {
+      $("planSubcategorySelect").value = button.dataset.planSubcategory;
+      target.querySelectorAll(".choice-btn").forEach((item) => item.classList.remove("active"));
+      button.classList.add("active");
+    });
+  });
+}
+
+function setPlanRecurrence(value) {
+  $("planRecurrenceInput").value = value;
+  document.querySelectorAll("[data-recurrence]").forEach((button) => {
+    button.classList.toggle("active", button.dataset.recurrence === value);
+  });
+  $("planEndDateField").classList.toggle("hidden", value === "one_time");
+}
+
+function setPlanScope(value) {
+  $("planScopeInput").value = value;
+  document.querySelectorAll("[data-plan-scope]").forEach((button) => {
+    button.classList.toggle("active", button.dataset.planScope === value);
+  });
+}
+
+function defaultDateForMonth(month) {
+  if (month === currentMonth()) return todayISO();
+  return `${month}-01`;
+}
+
+function openPlan(item = null) {
+  state.editingPlan = item;
+  $("planError").textContent = "";
+  $("deletePlanBtn").classList.toggle("hidden", !item);
+  $("planDialogTitle").textContent = item ? "Edytuj planowany wydatek" : "Nowy planowany wydatek";
+
+  if (!item) {
+    $("planAmountInput").value = "";
+    $("planDescriptionInput").value = "";
+    $("planDueDateInput").value = defaultDateForMonth(state.planMonth);
+    $("planEndDateInput").value = "";
+    fillPlanCategorySelect("");
+    setPlanRecurrence("one_time");
+    setPlanScope("current");
+    $("planScopeField").classList.add("hidden");
+  } else {
+    $("planAmountInput").value = item.amount;
+    $("planDescriptionInput").value = item.description || "";
+    $("planDueDateInput").value = item.due_date;
+    $("planEndDateInput").value = item.end_date || "";
+    fillPlanCategorySelect(item.category_id || "");
+    fillPlanSubcategorySelect(item.subcategory_id || "", item.category_id || "");
+    setPlanRecurrence(item.recurrence || "one_time");
+    setPlanScope("current");
+    $("planScopeField").classList.toggle("hidden", item.recurrence === "one_time");
+  }
+
+  planDialog.showModal();
+  setTimeout(() => $("planAmountInput").focus(), 120);
+}
+
+function openPayPlan(item) {
+  state.payingPlan = item;
+  $("payPlanError").textContent = "";
+  $("payPlanAmountInput").value = item.amount;
+  $("payPlanDateInput").value = todayISO();
+  payPlanDialog.showModal();
 }
 
 function renderCategories() {
@@ -439,7 +667,10 @@ function openExpense(expenseId = null) {
 }
 
 $("openAddExpense").addEventListener("click", () => openExpense());
-$("fab").addEventListener("click", () => openExpense());
+$("fab").addEventListener("click", () => {
+  if (state.activeTab === "plan") openPlan();
+  else openExpense();
+});
 
 $("expenseForm").addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -482,6 +713,124 @@ $("deleteExpenseBtn").addEventListener("click", async () => {
   } catch (error) {
     $("expenseError").textContent = error.message;
   }
+});
+
+
+document.querySelectorAll("[data-recurrence]").forEach((button) => {
+  button.addEventListener("click", () => setPlanRecurrence(button.dataset.recurrence));
+});
+
+document.querySelectorAll("[data-plan-scope]").forEach((button) => {
+  button.addEventListener("click", () => setPlanScope(button.dataset.planScope));
+});
+
+document.querySelectorAll("[data-plan-view]").forEach((button) => {
+  button.addEventListener("click", () => {
+    document.querySelectorAll("[data-plan-view]").forEach((item) => item.classList.remove("active"));
+    button.classList.add("active");
+    state.planView = button.dataset.planView;
+    renderPlan();
+  });
+});
+
+$("planForm").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  $("planError").textContent = "";
+
+  if (!$("planCategorySelect").value) {
+    $("planError").textContent = "Wybierz kategorię";
+    return;
+  }
+
+  const payload = {
+    amount: $("planAmountInput").value,
+    categoryId: $("planCategorySelect").value,
+    subcategoryId: $("planSubcategorySelect").value || null,
+    description: $("planDescriptionInput").value,
+    dueDate: $("planDueDateInput").value,
+    recurrence: $("planRecurrenceInput").value,
+    endDate: $("planRecurrenceInput").value === "one_time" ? null : ($("planEndDateInput").value || null),
+  };
+
+  try {
+    if (state.editingPlan) {
+      payload.occurrenceDate = state.editingPlan.occurrence_date;
+      payload.scope = state.editingPlan.recurrence === "one_time" ? "current" : $("planScopeInput").value;
+      await api(`/api/plans/${state.editingPlan.rule_id}`, {
+        method: "PATCH",
+        body: JSON.stringify(payload),
+      });
+    } else {
+      await api("/api/plans", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+    }
+
+    planDialog.close();
+    state.editingPlan = null;
+    await loadPlan();
+  } catch (error) {
+    $("planError").textContent = error.message;
+  }
+});
+
+$("deletePlanBtn").addEventListener("click", async () => {
+  const item = state.editingPlan;
+  if (!item) return;
+
+  const scope = item.recurrence === "one_time" ? "current" : $("planScopeInput").value;
+  const message = scope === "future"
+    ? "Usunąć ten planowany wydatek od tego miesiąca również w przyszłości?"
+    : "Usunąć ten planowany wydatek tylko z tego miesiąca?";
+  if (!confirm(message)) return;
+
+  try {
+    await api(`/api/plans/${item.rule_id}`, {
+      method: "DELETE",
+      body: JSON.stringify({
+        occurrenceDate: item.occurrence_date,
+        scope,
+      }),
+    });
+    planDialog.close();
+    state.editingPlan = null;
+    await loadPlan();
+  } catch (error) {
+    $("planError").textContent = error.message;
+  }
+});
+
+$("payPlanForm").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  $("payPlanError").textContent = "";
+  if (!state.payingPlan) return;
+
+  try {
+    await api(`/api/plans/${state.payingPlan.rule_id}/pay`, {
+      method: "POST",
+      body: JSON.stringify({
+        occurrenceDate: state.payingPlan.occurrence_date,
+        amount: $("payPlanAmountInput").value,
+        paidDate: $("payPlanDateInput").value,
+      }),
+    });
+    payPlanDialog.close();
+    state.payingPlan = null;
+    await Promise.all([loadPlan(), loadExpenses(), loadSummary()]);
+  } catch (error) {
+    $("payPlanError").textContent = error.message;
+  }
+});
+
+$("prevPlanMonth").addEventListener("click", async () => {
+  state.planMonth = shiftMonth(state.planMonth, -1);
+  await loadPlan();
+});
+
+$("nextPlanMonth").addEventListener("click", async () => {
+  state.planMonth = shiftMonth(state.planMonth, 1);
+  await loadPlan();
 });
 
 $("addCategoryBtn").addEventListener("click", () => {
@@ -562,10 +911,13 @@ document.querySelectorAll(".nav-btn").forEach((button) => {
     button.classList.add("active");
 
     const tab = button.dataset.tab;
+    state.activeTab = tab;
     $(tab + "Tab").classList.add("active");
     $("fab").classList.toggle("hidden", tab === "settings");
+    $("fab").setAttribute("aria-label", tab === "plan" ? "Dodaj planowany wydatek" : "Dodaj wydatek");
 
     if (tab === "summary") await loadSummary();
+    if (tab === "plan") await loadPlan();
     if (tab === "settings") await loadCategories();
   });
 });
