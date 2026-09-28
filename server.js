@@ -452,7 +452,7 @@ app.post("/api/expenses", requireAuth, async (req, res) => {
       RETURNING id
     `, [amount, categoryId, subcategoryId, description, expenseDate]);
 
-    res.status(201).json({ id: result.rows[0].id });
+    res.status(201).json({ id: result.rows[0].id, ok: true });
   } catch (error) {
     if (error.code === "23503") return sendError(res, 400, "Wybrana kategoria nie istnieje");
     console.error(error);
@@ -546,7 +546,21 @@ app.delete("/api/expenses/:id/refund", requireAuth, async (req, res) => {
 });
 
 function isoDate(value) {
-  return value ? String(value).slice(0, 10) : null;
+  if (!value) return null;
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return value.toISOString().slice(0, 10);
+  }
+
+  const text = String(value);
+  const direct = text.match(/^\d{4}-\d{2}-\d{2}/);
+  if (direct) return direct[0];
+
+  const parsed = new Date(value);
+  if (!Number.isNaN(parsed.getTime())) {
+    return parsed.toISOString().slice(0, 10);
+  }
+
+  return null;
 }
 
 function daysInMonth(year, month) {
@@ -557,6 +571,7 @@ function occurrenceForMonth(rule, month) {
   const [year, mon] = month.split("-").map(Number);
   const start = isoDate(rule.start_date);
   const end = isoDate(rule.end_date);
+  if (!start) return null;
   const [sy, sm, sd] = start.split("-").map(Number);
   const monthStart = `${month}-01`;
   const monthEnd = `${month}-${String(daysInMonth(year, mon)).padStart(2, "0")}`;
@@ -591,7 +606,18 @@ async function validateCategoryPair(categoryId, subcategoryId) {
 
 async function resolvePlannedOccurrence(ruleId, occurrenceDate) {
   const ruleResult = await pool.query(`
-    SELECT pr.*, c.name AS category_name, s.name AS subcategory_name
+    SELECT
+      pr.id,
+      pr.amount,
+      pr.category_id,
+      pr.subcategory_id,
+      pr.description,
+      to_char(pr.start_date, 'YYYY-MM-DD') AS start_date,
+      pr.recurrence,
+      CASE WHEN pr.end_date IS NULL THEN NULL ELSE to_char(pr.end_date, 'YYYY-MM-DD') END AS end_date,
+      pr.created_at,
+      c.name AS category_name,
+      s.name AS subcategory_name
     FROM planned_rules pr
     LEFT JOIN categories c ON c.id=pr.category_id
     LEFT JOIN subcategories s ON s.id=pr.subcategory_id
@@ -601,7 +627,18 @@ async function resolvePlannedOccurrence(ruleId, occurrenceDate) {
   const rule = ruleResult.rows[0];
 
   const overrideResult = await pool.query(`
-    SELECT po.*, c.name AS override_category_name, s.name AS override_subcategory_name
+    SELECT
+      po.id,
+      po.rule_id,
+      to_char(po.occurrence_date, 'YYYY-MM-DD') AS occurrence_date,
+      po.amount,
+      po.category_id,
+      po.subcategory_id,
+      po.description,
+      CASE WHEN po.due_date IS NULL THEN NULL ELSE to_char(po.due_date, 'YYYY-MM-DD') END AS due_date,
+      po.skipped,
+      c.name AS override_category_name,
+      s.name AS override_subcategory_name
     FROM planned_overrides po
     LEFT JOIN categories c ON c.id=po.category_id
     LEFT JOIN subcategories s ON s.id=po.subcategory_id
@@ -633,7 +670,18 @@ app.get("/api/plans", requireAuth, async (req, res) => {
 
   try {
     const rulesResult = await pool.query(`
-      SELECT pr.*, c.name AS category_name, s.name AS subcategory_name
+      SELECT
+        pr.id,
+        pr.amount,
+        pr.category_id,
+        pr.subcategory_id,
+        pr.description,
+        to_char(pr.start_date, 'YYYY-MM-DD') AS start_date,
+        pr.recurrence,
+        CASE WHEN pr.end_date IS NULL THEN NULL ELSE to_char(pr.end_date, 'YYYY-MM-DD') END AS end_date,
+        pr.created_at,
+        c.name AS category_name,
+        s.name AS subcategory_name
       FROM planned_rules pr
       LEFT JOIN categories c ON c.id=pr.category_id
       LEFT JOIN subcategories s ON s.id=pr.subcategory_id
