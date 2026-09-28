@@ -116,3 +116,37 @@
   color:#fff;
 }
 .choice-btn:active{transform:scale(.98)}
+
+/* Planning */
+.bottom-nav{grid-template-columns:repeat(4,1fr)}
+.plan-hero{padding:20px 18px;border-radius:24px;background:linear-gradient(145deg,#e7f1eb,#f4f8f5);margin-bottom:18px}
+.plan-hero-title{margin:0 0 14px;font-weight:800;font-size:16px}
+.plan-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.plan-stats>div{min-width:0;border-right:1px solid rgba(80,120,100,.13);padding-right:8px}
+.plan-stats>div:last-child{border-right:0;padding-right:0}
+.plan-stats span,.plan-forecast span{display:block;color:var(--muted);font-size:11px;font-weight:650;margin-bottom:4px}
+.plan-stats strong{font-size:16px;white-space:nowrap}
+.plan-stats>div:last-child strong{color:var(--accent-dark)}
+.plan-forecast{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:16px;padding-top:13px;border-top:1px solid rgba(80,120,100,.14)}
+.plan-forecast span{margin:0;font-size:12px}
+.plan-forecast strong{font-size:17px}
+.plan-list{display:grid;gap:10px}
+.plan-card{background:var(--surface);border:1px solid #e8ede9;border-radius:18px;overflow:hidden}
+.plan-card.is-paid{opacity:.72}
+.plan-card-main{width:100%;border:0;background:transparent;color:var(--text);display:grid;grid-template-columns:minmax(0,1fr) auto;gap:14px;text-align:left;padding:14px 15px}
+.plan-card-copy{display:flex;flex-direction:column;gap:3px;min-width:0}
+.plan-card-title{font-size:15px;font-weight:800;line-height:1.25}
+.plan-card-category,.plan-card-meta{color:var(--muted);font-size:12px;line-height:1.3}
+.plan-card-side{display:flex;flex-direction:column;align-items:flex-end;justify-content:space-between;gap:10px;white-space:nowrap}
+.plan-card-side>strong{font-size:15px}
+.plan-status{border-radius:999px;padding:5px 8px;font-size:10px;font-weight:750}
+.plan-status.due{background:var(--soft);color:var(--accent-dark)}
+.plan-status.paid{background:#edf2ef;color:var(--muted)}
+.plan-status.overdue{background:#faeeee;color:var(--danger)}
+.plan-paid-btn{width:100%;border:0;border-top:1px solid var(--line);background:#f5faf7;color:var(--accent-dark);padding:10px;font-weight:800;font-size:13px}
+.plan-sheet{max-height:92vh;overflow-y:auto}
+@media(max-width:380px){
+  .plan-stats{gap:5px}
+  .plan-stats strong{font-size:14px}
+  .nav-btn{font-size:10px}
+}
