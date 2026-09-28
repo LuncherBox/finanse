@@ -268,8 +268,12 @@ app.delete("/api/categories/:id", requireAuth, async (req, res) => {
       "SELECT 1 FROM expenses WHERE category_id=$1 LIMIT 1",
       [req.params.id]
     );
-    if (used.rowCount) {
-      return sendError(res, 409, "Kategoria jest używana w wydatkach. Najpierw zmień kategorię tych wydatków.");
+    const plannedUsed = await pool.query(
+      "SELECT 1 FROM planned_rules WHERE category_id=$1 LIMIT 1",
+      [req.params.id]
+    );
+    if (used.rowCount || plannedUsed.rowCount) {
+      return sendError(res, 409, "Kategoria jest używana w wydatkach lub planie. Najpierw zmień przypisane pozycje.");
     }
 
     const result = await pool.query("DELETE FROM categories WHERE id=$1", [req.params.id]);
@@ -323,8 +327,12 @@ app.delete("/api/subcategories/:id", requireAuth, async (req, res) => {
       "SELECT 1 FROM expenses WHERE subcategory_id=$1 LIMIT 1",
       [req.params.id]
     );
-    if (used.rowCount) {
-      return sendError(res, 409, "Podkategoria jest używana w wydatkach. Najpierw zmień te wydatki.");
+    const plannedUsed = await pool.query(
+      "SELECT 1 FROM planned_rules WHERE subcategory_id=$1 LIMIT 1",
+      [req.params.id]
+    );
+    if (used.rowCount || plannedUsed.rowCount) {
+      return sendError(res, 409, "Podkategoria jest używana w wydatkach lub planie. Najpierw zmień przypisane pozycje.");
     }
 
     const result = await pool.query("DELETE FROM subcategories WHERE id=$1", [req.params.id]);
@@ -560,16 +568,19 @@ app.get("/api/plans", requireAuth, async (req, res) => {
       const effective = await resolvePlannedOccurrence(rule.id, occurrenceDate);
       if (!effective) continue;
 
-      const paidResult = await pool.query(
-        "SELECT paid_at, expense_id FROM planned_payments WHERE rule_id=$1 AND occurrence_date=$2",
-        [rule.id, occurrenceDate]
-      );
+      const paidResult = await pool.query(`
+        SELECT pp.paid_at, pp.expense_id, e.amount::float AS paid_amount
+        FROM planned_payments pp
+        LEFT JOIN expenses e ON e.id=pp.expense_id
+        WHERE pp.rule_id=$1 AND pp.occurrence_date=$2
+      `, [rule.id, occurrenceDate]);
 
       items.push({
         ...effective,
         paid: Boolean(paidResult.rowCount),
         paid_at: paidResult.rowCount ? isoDate(paidResult.rows[0].paid_at) : null,
         expense_id: paidResult.rowCount ? paidResult.rows[0].expense_id : null,
+        paid_amount: paidResult.rowCount ? Number(paidResult.rows[0].paid_amount ?? effective.amount) : null,
       });
     }
 
@@ -626,6 +637,8 @@ app.patch("/api/plans/:id", requireAuth, async (req, res) => {
   if (!["current","future"].includes(scope)) return sendError(res, 400, "Nieprawidłowy zakres zmiany");
   if (!Number.isFinite(amount) || amount <= 0) return sendError(res, 400, "Podaj poprawną kwotę");
   if (!["one_time","monthly","yearly"].includes(recurrence)) return sendError(res, 400, "Nieprawidłowa cykliczność");
+  if (endDate && !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) return sendError(res, 400, "Nieprawidłowa data końcowa");
+  if (endDate && endDate < dueDate) return sendError(res, 400, "Data końcowa nie może być wcześniejsza niż termin");
   if (!(await validateCategoryPair(categoryId, subcategoryId))) return sendError(res, 400, "Wybierz poprawną kategorię i podkategorię");
 
   const client = await pool.connect();
@@ -638,7 +651,7 @@ app.patch("/api/plans/:id", requireAuth, async (req, res) => {
     }
     const rule = ruleResult.rows[0];
 
-    if (scope === "current") {
+    if (scope === "current" && rule.recurrence !== "one_time") {
       await client.query(`
         INSERT INTO planned_overrides(rule_id, occurrence_date, amount, category_id, subcategory_id, description, due_date, skipped)
         VALUES($1,$2,$3,$4,$5,$6,$7,FALSE)
@@ -650,6 +663,13 @@ app.patch("/api/plans/:id", requireAuth, async (req, res) => {
           due_date=EXCLUDED.due_date,
           skipped=FALSE
       `, [ruleId, occurrenceDate, amount, categoryId, subcategoryId, description, dueDate]);
+    } else if (scope === "current") {
+      await client.query(`
+        UPDATE planned_rules
+        SET amount=$1, category_id=$2, subcategory_id=$3, description=$4,
+            start_date=$5, recurrence=$6, end_date=$7
+        WHERE id=$8
+      `, [amount, categoryId, subcategoryId, description, dueDate, recurrence, recurrence === "one_time" ? dueDate : endDate, ruleId]);
     } else {
       const startDate = isoDate(rule.start_date);
       if (startDate === occurrenceDate) {
