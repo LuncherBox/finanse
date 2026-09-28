@@ -443,81 +443,7 @@ function fillPlanSubcategorySelect(selectedId = "", categoryIdOverride = null) {
 
 function setPlanRecurrence(value) {
   $("planRecurrenceInput").value = value;
-  $("deleteCategoryBtn").addEventListener("click", async () => {
-  if (!state.editingCategoryId) return;
-  if (!confirm("Usunąć tę kategorię z dostępnych opcji? Stare wydatki zachowają jej nazwę.")) return;
-  try {
-    await api(`/api/categories/${state.editingCategoryId}`, { method: "DELETE" });
-    categoryDialog.close();
-    state.editingCategoryId = null;
-    await Promise.all([loadCategories(), loadExpenses(), loadSummary(), loadPlan()]);
-  } catch (error) {
-    $("categoryError").textContent = error.message;
-  }
-});
-
-$("deleteSubcategoryBtn").addEventListener("click", async () => {
-  if (!state.editingSubcategoryId) return;
-  if (!confirm("Usunąć tę podkategorię z dostępnych opcji? Stare wydatki zachowają jej nazwę.")) return;
-  try {
-    await api(`/api/subcategories/${state.editingSubcategoryId}`, { method: "DELETE" });
-    subcategoryDialog.close();
-    state.editingSubcategoryId = null;
-    await Promise.all([loadCategories(), loadExpenses(), loadSummary(), loadPlan()]);
-  } catch (error) {
-    $("subcategoryError").textContent = error.message;
-  }
-});
-
-$("refundExpenseBtn").addEventListener("click", () => {
-  if (!state.editingExpenseId) return;
-  const expense =
-    state.expenses.find((item) => item.id === state.editingExpenseId && item.transaction_type !== "refund") ||
-    state.summaryExpenses.find((item) => item.id === state.editingExpenseId && item.transaction_type !== "refund");
-  if (!expense) return;
-
-  $("refundError").textContent = "";
-  $("refundAmountInput").value = expense.refund_amount || expense.amount;
-  $("refundDateInput").value = expense.refund_date ? String(expense.refund_date).slice(0,10) : todayISO();
-  $("deleteRefundBtn").classList.toggle("hidden", !expense.refund_amount);
-  refundDialog.showModal();
-});
-
-$("refundForm").addEventListener("submit", async (event) => {
-  event.preventDefault();
-  $("refundError").textContent = "";
-  if (!state.editingExpenseId) return;
-
-  try {
-    await api(`/api/expenses/${state.editingExpenseId}/refund`, {
-      method: "POST",
-      body: JSON.stringify({
-        amount: $("refundAmountInput").value,
-        refundDate: $("refundDateInput").value,
-      }),
-    });
-    refundDialog.close();
-    expenseDialog.close();
-    await Promise.all([loadExpenses(), loadSummary(), loadPlan()]);
-  } catch (error) {
-    $("refundError").textContent = error.message;
-  }
-});
-
-$("deleteRefundBtn").addEventListener("click", async () => {
-  if (!state.editingExpenseId) return;
-  if (!confirm("Usunąć informację o zwrocie?")) return;
-  try {
-    await api(`/api/expenses/${state.editingExpenseId}/refund`, { method: "DELETE" });
-    refundDialog.close();
-    expenseDialog.close();
-    await Promise.all([loadExpenses(), loadSummary(), loadPlan()]);
-  } catch (error) {
-    $("refundError").textContent = error.message;
-  }
-});
-
-document.querySelectorAll("[data-recurrence]").forEach((button) => {
+  document.querySelectorAll("[data-recurrence]").forEach((button) => {
     button.classList.toggle("active", button.dataset.recurrence === value);
   });
   $("planEndDateField").classList.toggle("hidden", value === "one_time");
@@ -932,6 +858,80 @@ $("prevPlanMonth").addEventListener("click", async () => {
 $("nextPlanMonth").addEventListener("click", async () => {
   state.planMonth = shiftMonth(state.planMonth, 1);
   await loadPlan();
+});
+
+$("deleteCategoryBtn").addEventListener("click", async () => {
+  if (!state.editingCategoryId) return;
+  if (!confirm("Usunąć tę kategorię z dostępnych opcji? Stare wydatki zachowają jej nazwę.")) return;
+  try {
+    await api(`/api/categories/${state.editingCategoryId}`, { method: "DELETE" });
+    categoryDialog.close();
+    state.editingCategoryId = null;
+    await Promise.all([loadCategories(), loadExpenses(), loadSummary(), loadPlan()]);
+  } catch (error) {
+    $("categoryError").textContent = error.message;
+  }
+});
+
+$("deleteSubcategoryBtn").addEventListener("click", async () => {
+  if (!state.editingSubcategoryId) return;
+  if (!confirm("Usunąć tę podkategorię z dostępnych opcji? Stare wydatki zachowają jej nazwę.")) return;
+  try {
+    await api(`/api/subcategories/${state.editingSubcategoryId}`, { method: "DELETE" });
+    subcategoryDialog.close();
+    state.editingSubcategoryId = null;
+    await Promise.all([loadCategories(), loadExpenses(), loadSummary(), loadPlan()]);
+  } catch (error) {
+    $("subcategoryError").textContent = error.message;
+  }
+});
+
+$("refundExpenseBtn").addEventListener("click", () => {
+  if (!state.editingExpenseId) return;
+  const expense =
+    state.expenses.find((item) => item.id === state.editingExpenseId && item.transaction_type !== "refund") ||
+    state.summaryExpenses.find((item) => item.id === state.editingExpenseId && item.transaction_type !== "refund");
+  if (!expense) return;
+
+  $("refundError").textContent = "";
+  $("refundAmountInput").value = expense.refund_amount || expense.amount;
+  $("refundDateInput").value = expense.refund_date ? String(expense.refund_date).slice(0,10) : todayISO();
+  $("deleteRefundBtn").classList.toggle("hidden", !expense.refund_amount);
+  refundDialog.showModal();
+});
+
+$("refundForm").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  $("refundError").textContent = "";
+  if (!state.editingExpenseId) return;
+
+  try {
+    await api(`/api/expenses/${state.editingExpenseId}/refund`, {
+      method: "POST",
+      body: JSON.stringify({
+        amount: $("refundAmountInput").value,
+        refundDate: $("refundDateInput").value,
+      }),
+    });
+    refundDialog.close();
+    expenseDialog.close();
+    await Promise.all([loadExpenses(), loadSummary(), loadPlan()]);
+  } catch (error) {
+    $("refundError").textContent = error.message;
+  }
+});
+
+$("deleteRefundBtn").addEventListener("click", async () => {
+  if (!state.editingExpenseId) return;
+  if (!confirm("Usunąć informację o zwrocie?")) return;
+  try {
+    await api(`/api/expenses/${state.editingExpenseId}/refund`, { method: "DELETE" });
+    refundDialog.close();
+    expenseDialog.close();
+    await Promise.all([loadExpenses(), loadSummary(), loadPlan()]);
+  } catch (error) {
+    $("refundError").textContent = error.message;
+  }
 });
 
 $("addCategoryBtn").addEventListener("click", () => {
