@@ -150,3 +150,9 @@
   .plan-stats strong{font-size:14px}
   .nav-btn{font-size:10px}
 }
+
+/* Refunds and destructive actions */
+.refund-btn{width:100%;border:1px solid #d9e7df;background:#f3f8f5}
+.refund-info{padding:10px 12px;border-radius:12px;background:#f3f8f5;color:var(--accent-dark);font-size:13px;font-weight:700}
+.refund-row{background:#f7fbf8;border-color:#dcebe2}
+.refund-row .expense-amount{color:var(--accent-dark)}
