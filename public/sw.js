@@ -1,4 +1,4 @@
-const CACHE = "finanse-shell-v1";
+const CACHE = "finanse-shell-v2";
 const ASSETS = ["/", "/styles.css", "/app.js", "/manifest.webmanifest"];
 
 self.addEventListener("install", (event) => {
