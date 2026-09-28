@@ -443,8 +443,7 @@ function fillPlanSubcategorySelect(selectedId = "", categoryIdOverride = null) {
 
 function setPlanRecurrence(value) {
   $("planRecurrenceInput").value = value;
-  
-$("deleteCategoryBtn").addEventListener("click", async () => {
+  $("deleteCategoryBtn").addEventListener("click", async () => {
   if (!state.editingCategoryId) return;
   if (!confirm("Usunąć tę kategorię z dostępnych opcji? Stare wydatki zachowają jej nazwę.")) return;
   try {
