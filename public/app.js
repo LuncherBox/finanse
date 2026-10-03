@@ -221,9 +221,11 @@ function renderPlan() {
           </span>
         </button>
         ${item.paid ? "" : `
-          <button class="plan-paid-btn" type="button" data-pay-plan="${item.rule_id}" data-pay-occurrence="${item.occurrence_date}">
-            ✓ Zapłacone
-          </button>
+          <div class="plan-card-actions">
+            <button class="plan-paid-btn" type="button" data-pay-plan="${item.rule_id}" data-pay-occurrence="${item.occurrence_date}">
+              Oznacz jako zapłacone
+            </button>
+          </div>
         `}
       </article>
     `;
@@ -822,6 +824,10 @@ document.querySelectorAll("[data-plan-view]").forEach((button) => {
     state.planView = button.dataset.planView;
     renderPlan();
   });
+});
+
+$("clearPlanEndDate").addEventListener("click", () => {
+  $("planEndDateInput").value = "";
 });
 
 $("planForm").addEventListener("submit", async (event) => {
