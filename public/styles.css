@@ -230,3 +230,54 @@
   font-size:14px;
   white-space:nowrap;
 }
+
+/* Plan card refinements */
+.inline-clear-btn{
+  margin-top:8px;
+  border:0;
+  background:transparent;
+  color:var(--accent-dark);
+  font-size:12px;
+  font-weight:750;
+  padding:0;
+}
+.plan-card{
+  border-radius:20px;
+  box-shadow:0 4px 14px rgba(32,54,44,.04);
+}
+.plan-card-main{
+  padding:16px 16px 14px;
+}
+.plan-card-title{
+  font-size:16px;
+  line-height:1.25;
+}
+.plan-card-category{
+  margin-top:2px;
+}
+.plan-card-meta{
+  margin-top:4px;
+}
+.plan-card-side{
+  justify-content:flex-start;
+  gap:8px;
+}
+.plan-card-actions{
+  padding:0 14px 14px;
+}
+.plan-paid-btn{
+  width:100%;
+  border:1px solid var(--accent);
+  border-radius:14px;
+  background:var(--accent);
+  color:#fff;
+  padding:11px 14px;
+  font-weight:800;
+  font-size:13px;
+}
+.plan-paid-btn:active{
+  transform:scale(.99);
+}
+.plan-card.is-paid .plan-card-main{
+  background:#fafcfb;
+}
