@@ -156,3 +156,77 @@
 .refund-info{padding:10px 12px;border-radius:12px;background:#f3f8f5;color:var(--accent-dark);font-size:13px;font-weight:700}
 .refund-row{background:#f7fbf8;border-color:#dcebe2}
 .refund-row .expense-amount{color:var(--accent-dark)}
+
+/* Summary descriptions and date grouping */
+.summary-description{
+  display:block;
+  margin-top:3px;
+  color:var(--muted);
+  font-size:12px;
+  line-height:1.35;
+  font-weight:500;
+}
+.summary-date-card{
+  background:var(--surface);
+  border:1px solid #edf0ee;
+  border-radius:18px;
+  overflow:hidden;
+}
+.summary-date-toggle{
+  width:100%;
+  border:0;
+  background:var(--surface);
+  color:var(--text);
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  gap:14px;
+  align-items:center;
+  text-align:left;
+  padding:14px 16px;
+}
+.summary-date-copy{
+  display:flex;
+  flex-direction:column;
+  gap:3px;
+}
+.summary-date-copy strong{font-size:16px}
+.summary-date-copy small{color:var(--muted);font-size:12px}
+.summary-date-side{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  white-space:nowrap;
+}
+.summary-date-side>strong{font-size:15px}
+.summary-date-expenses{
+  border-top:1px solid var(--line);
+  padding:2px 14px 6px;
+  background:#fbfcfb;
+}
+.summary-date-expense{
+  width:100%;
+  border:0;
+  border-bottom:1px solid #edf0ee;
+  background:transparent;
+  color:var(--text);
+  padding:11px 2px;
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  gap:12px;
+  align-items:center;
+  text-align:left;
+}
+.summary-date-expense:last-child{border-bottom:0}
+.summary-date-expense-copy{
+  display:flex;
+  flex-direction:column;
+  gap:2px;
+  min-width:0;
+}
+.summary-date-expense-copy strong{font-size:14px}
+.summary-date-expense-copy span{font-size:12px;color:var(--muted)}
+.summary-date-expense-copy small{font-size:12px;color:var(--muted);font-weight:500}
+.summary-date-expense-amount{
+  font-size:14px;
+  white-space:nowrap;
+}
