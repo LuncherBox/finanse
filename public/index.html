@@ -244,9 +244,12 @@
         <input id="planRecurrenceInput" type="hidden" value="one_time">
       </div>
 
-      <label id="planEndDateField" class="hidden">Powtarzaj do <span class="muted">(opcjonalnie)</span>
-        <input id="planEndDateInput" type="date">
-      </label>
+      <div id="planEndDateField" class="hidden">
+        <label>Powtarzaj do <span class="muted">(opcjonalnie)</span>
+          <input id="planEndDateInput" type="date">
+        </label>
+        <button id="clearPlanEndDate" class="inline-clear-btn" type="button">Bez daty końcowej</button>
+      </div>
 
       <div id="planScopeField" class="choice-field hidden">
         <span class="choice-label">Zakres zmiany</span>
