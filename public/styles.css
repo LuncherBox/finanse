@@ -281,3 +281,75 @@
 .plan-card.is-paid .plan-card-main{
   background:#fafcfb;
 }
+
+/* Three-level category summary */
+.summary-subcategory-block{
+  border-bottom:1px solid #edf0ee;
+}
+.summary-subcategory-block:last-child{
+  border-bottom:0;
+}
+.summary-subcategory-toggle{
+  width:100%;
+  border:0;
+  background:transparent;
+  color:var(--text);
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  gap:12px;
+  align-items:center;
+  text-align:left;
+  padding:12px 0;
+}
+.summary-subcategory-side{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  white-space:nowrap;
+}
+.summary-toggle-icon-small{
+  width:22px;
+  height:22px;
+  font-size:16px;
+  border-radius:7px;
+}
+.summary-expense-details{
+  margin:0 -16px;
+  padding:0 16px 6px;
+  background:#f7faf8;
+  border-top:1px solid #edf0ee;
+}
+.summary-expense-detail-row{
+  width:100%;
+  border:0;
+  border-bottom:1px solid #e7ece8;
+  background:transparent;
+  color:var(--text);
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  gap:12px;
+  align-items:center;
+  text-align:left;
+  padding:11px 0;
+}
+.summary-expense-detail-row:last-child{
+  border-bottom:0;
+}
+.summary-expense-detail-copy{
+  display:flex;
+  flex-direction:column;
+  gap:2px;
+  min-width:0;
+}
+.summary-expense-detail-copy strong{
+  font-size:13px;
+  font-weight:700;
+}
+.summary-expense-detail-copy small{
+  font-size:11px;
+  color:var(--muted);
+}
+.summary-expense-detail-amount{
+  font-size:13px;
+  white-space:nowrap;
+}
