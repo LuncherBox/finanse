@@ -302,7 +302,7 @@ function renderCategorySummary(categories, subcategories, total) {
 
   const safeTotal = total || 1;
 
-  target.innerHTML = categories.map((category, index) => {
+  target.innerHTML = categories.map((category, categoryIndex) => {
     const amount = Number(category.amount || 0);
     const pct = Math.round((amount / safeTotal) * 100);
     const barPct = Math.min(100, Math.abs(pct));
@@ -312,7 +312,7 @@ function renderCategorySummary(categories, subcategories, total) {
 
     return `
       <div class="summary-category-card">
-        <button class="summary-category-toggle" type="button" data-summary-category="${index}" aria-expanded="false">
+        <button class="summary-category-toggle" type="button" data-summary-category="${categoryIndex}" aria-expanded="false">
           <span class="summary-category-copy">
             <strong>${escapeHtml(category.category_name)}</strong>
             <span class="bar-track"><span class="bar-fill" style="width:${barPct}%"></span></span>
@@ -323,34 +323,48 @@ function renderCategorySummary(categories, subcategories, total) {
           </span>
         </button>
 
-        <div class="summary-subcategory-list" data-summary-subcategories="${index}" hidden>
-          ${rows.map((item) => {
+        <div class="summary-subcategory-list" data-summary-subcategories="${categoryIndex}" hidden>
+          ${rows.map((item, subIndex) => {
             const subAmount = Number(item.amount || 0);
             const subPct = amount ? Math.round((subAmount / amount) * 100) : 0;
+            const key = `${categoryIndex}-${subIndex}`;
 
             const matchingExpenses = state.summaryExpenses.filter((expense) => {
-              const sameCategory = (expense.category_name || "Bez kategorii") === category.category_name;
+              const expenseCategory = expense.category_name || "Bez kategorii";
               const expenseSubcategory = expense.subcategory_name || "Bez podkategorii";
-              return sameCategory && expenseSubcategory === item.subcategory_name;
+              return expenseCategory === category.category_name &&
+                expenseSubcategory === item.subcategory_name;
             });
 
-            const descriptions = matchingExpenses
-              .map((expense) => expense.description)
-              .filter(Boolean);
-
-            const uniqueDescriptions = [...new Set(descriptions)];
-
             return `
-              <div class="summary-subcategory-row">
-                <span class="subcategory-info">
-                  <strong>${escapeHtml(item.subcategory_name)}</strong>
-                  <small>${subPct}%</small>
-                  ${uniqueDescriptions.length
-                    ? `<span class="summary-description">${uniqueDescriptions.map((description) => escapeHtml(description)).join(" · ")}</span>`
-                    : ""
-                  }
-                </span>
-                <strong class="subcategory-amount">${money(subAmount)}</strong>
+              <div class="summary-subcategory-block">
+                <button class="summary-subcategory-toggle" type="button" data-summary-subcategory="${key}" aria-expanded="false">
+                  <span class="subcategory-info">
+                    <strong>${escapeHtml(item.subcategory_name)}</strong>
+                    <small>${subPct}%</small>
+                  </span>
+                  <span class="summary-subcategory-side">
+                    <strong class="subcategory-amount">${money(subAmount)}</strong>
+                    <span class="summary-toggle-icon summary-toggle-icon-small" aria-hidden="true">+</span>
+                  </span>
+                </button>
+
+                <div class="summary-expense-details" data-summary-expense-details="${key}" hidden>
+                  ${matchingExpenses.length ? matchingExpenses.map((expense) => {
+                    const isRefund = expense.transaction_type === "refund";
+                    const label = expense.description || (isRefund ? "Zwrot" : "Wydatek");
+                    return `
+                      <button class="summary-expense-detail-row ${isRefund ? "refund-row" : ""}" type="button"
+                        ${isRefund ? "" : `data-summary-expense-id="${expense.id}"`}>
+                        <span class="summary-expense-detail-copy">
+                          <strong>${escapeHtml(label)}</strong>
+                          <small>${dateLabel(expense.expense_date)}</small>
+                        </span>
+                        <strong class="summary-expense-detail-amount">${money(expense.amount)}</strong>
+                      </button>
+                    `;
+                  }).join("") : '<div class="summary-no-subs">Brak szczegółów wydatków</div>'}
+                </div>
               </div>
             `;
           }).join("") || '<div class="summary-no-subs">Brak podkategorii</div>'}
@@ -369,6 +383,22 @@ function renderCategorySummary(categories, subcategories, total) {
       const icon = button.querySelector(".summary-toggle-icon");
       if (icon) icon.textContent = isOpen ? "+" : "−";
     });
+  });
+
+  target.querySelectorAll("[data-summary-subcategory]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const id = button.dataset.summarySubcategory;
+      const list = target.querySelector(`[data-summary-expense-details="${id}"]`);
+      const isOpen = button.getAttribute("aria-expanded") === "true";
+      button.setAttribute("aria-expanded", String(!isOpen));
+      list.hidden = isOpen;
+      const icon = button.querySelector(".summary-toggle-icon");
+      if (icon) icon.textContent = isOpen ? "+" : "−";
+    });
+  });
+
+  target.querySelectorAll("[data-summary-expense-id]").forEach((button) => {
+    button.addEventListener("click", () => openExpense(Number(button.dataset.summaryExpenseId)));
   });
 }
 
